@@ -1,0 +1,42 @@
+// Title: Free disk space of one VM (InsightsMetrics, with Perf fallback)
+// Purpose: Current free MB and free % per mount of a VM, and a free-space trend in 30 minute bins.
+// Source table(s): InsightsMetrics (FreeSpaceMB, FreeSpacePercentage), Perf (Free Megabytes, % Free Space)
+// Parameters to edit: VmName (computer name prefix), Lookback, Mounts (empty = all mounts).
+// Notes/traps: VM Insights (InsightsMetrics) and the legacy agent (Perf) fill different tables, only one
+//          has data for a given VM. If query 1 is empty, run query 2. The mount is in the tag
+//          vm.azm.ms/mountId ("C:", "/", "/var"). InsightsMetrics free space is MB. The legacy Perf counter
+//          InstanceName for Windows is the drive letter.
+//          Computer is matched with startswith because it can be a FQDN. The Computer value casing varies.
+//
+// --- Query 1: InsightsMetrics, current values per mount
+let VmName = "vm-sql-01";
+let Lookback = 2h;
+let Mounts = dynamic([]);   // e.g. dynamic(["E:", "L:"])
+InsightsMetrics
+| where TimeGenerated > ago(Lookback)
+| where Computer startswith VmName
+| where Name in ("FreeSpaceMB", "FreeSpacePercentage")
+| extend disk = tostring(parse_json(Tags)["vm.azm.ms/mountId"])
+| where array_length(Mounts) == 0 or disk in (Mounts)
+| summarize val = round(avg(Val), 1) by Computer, disk, Name
+| order by disk asc, Name asc
+//
+// --- Query 2: free MB trend per mount (run separately)
+// let VmName = "vm-sql-01";
+// let Lookback = 6h;
+// InsightsMetrics
+// | where TimeGenerated > ago(Lookback)
+// | where Computer startswith VmName
+// | where Name == "FreeSpaceMB"
+// | extend disk = tostring(parse_json(Tags)["vm.azm.ms/mountId"])
+// | summarize freeMB = round(avg(Val), 0) by disk, bin(TimeGenerated, 30m)
+// | order by disk asc, TimeGenerated asc
+//
+// --- Query 3: legacy Perf table (run separately)
+// let VmName = "vm-sql-01";
+// Perf
+// | where TimeGenerated > ago(6h)
+// | where Computer has VmName
+// | where CounterName in ("Free Megabytes", "% Free Space")
+// | summarize v = round(avg(CounterValue), 1) by Computer, InstanceName, CounterName
+// | order by InstanceName asc

@@ -1,0 +1,16 @@
+// Title: Data collection rules with OS kind, syslog / perf counter / extension data source counts
+// Purpose: Which DCRs exist, for Linux or Windows, and what they collect.
+// Source table(s): Azure Resource Graph, resources (microsoft.insights/datacollectionrules)
+// Parameters to edit: KindFilter ('Linux', 'Windows' or empty).
+// Notes/traps: kind is empty for DCRs created for endpoints/custom logs and for some Windows rules, so a
+//          KindFilter of 'Windows' misses rules without a kind. Counts are array lengths of the data sources.
+let KindFilter = '';
+resources
+| where type =~ 'microsoft.insights/datacollectionrules'
+| extend k = tostring(kind)
+| where KindFilter == '' or k =~ KindFilter
+| extend syslog = array_length(properties.dataSources.syslog),
+         perfCounters = array_length(properties.dataSources.performanceCounters),
+         extensions = array_length(properties.dataSources.extensions),
+         windowsEventLogs = array_length(properties.dataSources.windowsEventLogs)
+| project name, resourceGroup, subscriptionId, kind = k, syslog, perfCounters, windowsEventLogs, extensions

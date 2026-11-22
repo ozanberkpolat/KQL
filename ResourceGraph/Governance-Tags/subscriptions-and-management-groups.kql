@@ -1,0 +1,12 @@
+// Title: Subscriptions with their management group ancestors
+// Purpose: Map subscriptions to their parent management groups for a scope / segregation overview.
+// Source table(s): Azure Resource Graph, resourcecontainers
+// Parameters to edit: none.
+// Notes/traps: managementGroupAncestorsChain is ordered from the closest parent upwards, [0] is the
+//          direct parent.
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions'
+| project subscription = name, subscriptionId,
+    managementGroup = tostring(properties.managementGroupAncestorsChain[0].name),
+    parentManagementGroup = tostring(properties.managementGroupAncestorsChain[1].name)
+| order by subscription asc

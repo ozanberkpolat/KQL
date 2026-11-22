@@ -1,0 +1,13 @@
+// Title: Where is a piece of software installed (device list per version)
+// Purpose: Find all devices with named software and their versions, for example before retiring a tool.
+// Source table(s): DeviceTvmSoftwareInventory (Advanced Hunting)
+// Parameters to edit: NameHints (software name fragments), OsPlatforms.
+// Notes/traps: has_any matches whole terms, "7-zip" matches "7-Zip 23.01", but a partial word such as
+//          "zip" alone would not match "7zip". make_set caps the device list at 300 names.
+let NameHints = dynamic(["notepad", "7-zip"]);
+let OsPlatforms = dynamic(["Windows10", "Windows11"]);
+DeviceTvmSoftwareInventory
+| where OSPlatform in (OsPlatforms)
+| where SoftwareName has_any (NameHints)
+| summarize Devices = dcount(DeviceId), DeviceList = make_set(DeviceName, 300) by SoftwareVendor, SoftwareName, SoftwareVersion
+| order by SoftwareName asc, Devices desc

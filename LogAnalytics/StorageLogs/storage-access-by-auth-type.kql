@@ -1,0 +1,16 @@
+// Title: Storage account access by authentication type (blob and file)
+// Purpose: Who still uses account keys or SAS tokens on a storage account, how much, and when last. The
+//          evidence you need before switching off shared key access.
+// Source table(s): StorageBlobLogs, StorageFileLogs (diagnostic setting category StorageRead/Write/Delete)
+// Parameters to edit: AccountNames (empty = all accounts), Lookback.
+// Notes/traps: AuthenticationType values: AccountKey, SAS, OAuth, Anonymous, Kerberos, LocalUserPassword
+//          (SFTP local user). LocalUserPassword means SFTP password logins. A storage account without the
+//          diagnostic setting produces NO rows, that is "not logged", not "not used". Check the
+//          diagnostic setting before concluding. Query data volume can be large, keep Lookback short.
+let AccountNames = dynamic([]);   // e.g. dynamic(["stappprod001"])
+let Lookback = 10d;
+union StorageBlobLogs, StorageFileLogs
+| where TimeGenerated > ago(Lookback)
+| where array_length(AccountNames) == 0 or AccountName in (AccountNames)
+| summarize Events = count(), First = min(TimeGenerated), Last = max(TimeGenerated) by AccountName, Type, AuthenticationType
+| order by Events desc

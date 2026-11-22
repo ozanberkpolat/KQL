@@ -1,0 +1,16 @@
+// Title: Private DNS zones with VNet link and record counts
+// Purpose: Find private DNS zones, empty/unlinked zones, and zones that live outside the central DNS resource group.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/privatednszones)
+// Parameters to edit: CentralDnsResourceGroup (the RG where your hub owns all privatelink zones), ZoneName (optional filter).
+// Notes/traps: privatelink zones should normally exist once, linked to the hub VNet. A second copy of the
+//          same privatelink zone in a spoke subscription splits name resolution and breaks private endpoint DNS.
+let CentralDnsResourceGroup = 'rg-network-privatedns';
+let ZoneName = '';   // e.g. 'privatelink.blob.core.windows.net'
+resources
+| where type =~ 'microsoft.network/privatednszones'
+| where ZoneName == '' or name =~ ZoneName
+| extend outsideCentral = (name startswith 'privatelink' and resourceGroup !~ CentralDnsResourceGroup)
+| project name, resourceGroup, subscriptionId, outsideCentral,
+    vnetLinks = toint(properties.numberOfVirtualNetworkLinks),
+    recordSets = toint(properties.numberOfRecordSets)
+| order by outsideCentral desc, name asc

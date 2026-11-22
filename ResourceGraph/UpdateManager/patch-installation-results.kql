@@ -1,0 +1,33 @@
+// Title: Update Manager installation results (run history) per VM
+// Purpose: When did patching run on each VM, with what status, reboot status and patch counts.
+//          Also resolves VM names and subscription names for exports.
+// Source table(s): Azure Resource Graph, patchinstallationresources; resources; resourcecontainers
+// Parameters to edit: SinceDays, VmNames (empty = all).
+// Notes/traps: Resource Graph keeps only about 30 DAYS of patch installation history. For monthly
+//          reporting collect daily and store the rows yourself, or backfill older runs from
+//          AzureActivity (LogAnalytics/AzureActivity/updatemanager-installpatches-backfill.kql).
+//          A run that "timed out" on the client side has often still installed its patches, check the
+//          installedPatchCount and re-assess before retrying.
+//          Azure Arc machines use type microsoft.hybridcompute/machines/patchinstallationresults.
+let SinceDays = 30d;
+let VmNames = dynamic([]);
+patchinstallationresources
+| where type in~ ('microsoft.compute/virtualmachines/patchinstallationresults',
+                  'microsoft.hybridcompute/machines/patchinstallationresults')
+| extend p = properties, vm = tostring(split(id, '/')[8])
+| where todatetime(p.startDateTime) > ago(SinceDays)
+| where array_length(VmNames) == 0 or vm in~ (VmNames)
+| project vm, subscriptionId, resourceGroup,
+    status = tostring(p.status),
+    started = tostring(p.startDateTime),
+    lastModified = tostring(p.lastModifiedDateTime),
+    rebootStatus = tostring(p.rebootStatus),
+    installed = toint(p.installedPatchCount),
+    failed = toint(p.failedPatchCount),
+    pending = toint(p.pendingPatchCount),
+    startedBy = tostring(p.startedBy),
+    maintenanceRunId = tostring(p.maintenanceRunId),
+    activityId = tostring(p.installationActivityId),
+    osType = tostring(p.osType),
+    error = tostring(p.errorDetails.message)
+| order by started desc

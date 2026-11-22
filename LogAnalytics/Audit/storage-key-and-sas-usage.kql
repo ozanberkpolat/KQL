@@ -1,0 +1,16 @@
+// Title: Storage accounts still being used with account keys or SAS (all accounts in the workspace)
+// Purpose: Estate-wide list of accounts with key or SAS authenticated traffic, with first and last use.
+//          Input for "disable shared key access" planning.
+// Source table(s): StorageBlobLogs, StorageFileLogs
+// Parameters to edit: Lookback.
+// Notes/traps: the account name is taken from the 9th segment of _ResourceId (the Type column of
+//          union withsource tells blob from file). Accounts without diagnostic logging never show up here.
+let Lookback = 30d;
+union withsource=Service StorageBlobLogs, StorageFileLogs
+| where TimeGenerated > ago(Lookback)
+| where AuthenticationType in ('AccountKey', 'SAS')
+| summarize Events = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)
+    by Account = tostring(split(_ResourceId, '/')[8]),
+       Service = iff(Service == 'StorageBlobLogs', 'blob', 'file'),
+       AuthenticationType
+| order by Events desc

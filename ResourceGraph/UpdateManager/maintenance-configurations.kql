@@ -1,0 +1,18 @@
+// Title: Maintenance configurations (guest patching schedules)
+// Purpose: Window, duration, time zone, reboot setting and Linux classifications of every in-guest patch schedule.
+// Source table(s): Azure Resource Graph, resources (microsoft.maintenance/maintenanceconfigurations)
+// Parameters to edit: none.
+// Notes/traps: maintenanceScope InGuestPatch is the Update Manager one; other scopes (Host, OSImage,
+//          SQLDB) are platform maintenance and are filtered out here.
+resources
+| where type =~ 'microsoft.maintenance/maintenanceconfigurations'
+| where properties.maintenanceScope =~ 'InGuestPatch'
+| project name, resourceGroup, subscriptionId,
+    reboot = tostring(properties.installPatches.rebootSetting),
+    linuxClassifications = tostring(properties.installPatches.linuxParameters.classificationsToInclude),
+    windowsClassifications = tostring(properties.installPatches.windowsParameters.classificationsToInclude),
+    recurEvery = tostring(properties.maintenanceWindow.recurEvery),
+    start = tostring(properties.maintenanceWindow.startDateTime),
+    duration = tostring(properties.maintenanceWindow.duration),
+    timeZone = tostring(properties.maintenanceWindow.timeZone),
+    id

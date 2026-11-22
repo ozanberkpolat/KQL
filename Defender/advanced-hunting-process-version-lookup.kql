@@ -1,0 +1,17 @@
+// Title: Which version of a program is running on a device (process events)
+// Purpose: Confirm the real binary version when the inventory is ambiguous: product / file version and folder, last seen, count.
+// Source table(s): DeviceProcessEvents (Advanced Hunting)
+// Parameters to edit: DevicePrefix, ProgramHint, Lookback.
+// Notes/traps: the program can appear as the process itself or as the INITIATING process, the query
+//          covers both with iff(). Version fields are ProcessVersionInfoProductVersion /
+//          InitiatingProcessVersionInfoProductVersion. Advanced hunting keeps 30 days of events.
+let DevicePrefix = "srv-gateway";
+let ProgramHint = "EnterpriseGateway";
+let Lookback = 30d;
+DeviceProcessEvents
+| where Timestamp > ago(Lookback) and DeviceName startswith DevicePrefix
+| where FileName has ProgramHint or InitiatingProcessFileName has ProgramHint
+| extend Exe = iff(FileName has ProgramHint, FileName, InitiatingProcessFileName),
+         Version = iff(FileName has ProgramHint, ProcessVersionInfoProductVersion, InitiatingProcessVersionInfoProductVersion),
+         Folder = iff(FileName has ProgramHint, FolderPath, InitiatingProcessFolderPath)
+| summarize LastSeen = max(Timestamp), Events = count() by Exe, Version, Folder

@@ -1,0 +1,22 @@
+// Title: Policy exemptions with category, expiry and scope (optionally only VM-level exemptions)
+// Purpose: Who is exempt from what, until when. Find exemptions without an expiry date.
+// Source table(s): Azure Resource Graph, policyresources
+// Parameters to edit: ScopeContains ('virtualmachines' for VM-level only, empty = all), NameStartsWith (optional).
+// Notes/traps: exemptionCategory is Waiver or Mitigated. expiresOn is empty for permanent exemptions,
+//          review those first. The exempted resource is encoded in the exemption's id, before
+//          '/providers/Microsoft.Authorization'.
+let ScopeContains = '';
+let NameStartsWith = '';
+policyresources
+| where type =~ 'microsoft.authorization/policyexemptions'
+| extend exemptedScope = tostring(split(id, '/providers/Microsoft.Authorization')[0])
+| where ScopeContains == '' or exemptedScope contains ScopeContains
+| where NameStartsWith == '' or tostring(properties.displayName) startswith NameStartsWith
+| project name, displayName = tostring(properties.displayName),
+    exemptedResource = tostring(split(exemptedScope, '/')[-1]),
+    category = tostring(properties.exemptionCategory),
+    expires = todatetime(properties.expiresOn),
+    assignment = tostring(properties.policyAssignmentId),
+    referenceIds = tostring(properties.policyDefinitionReferenceIds),
+    description = tostring(properties.description)
+| order by expires asc

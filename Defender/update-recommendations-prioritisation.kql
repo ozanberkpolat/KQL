@@ -1,0 +1,45 @@
+// Title: Prioritise Defender for Cloud "Update <software>" recommendations by CVSS, EPSS and exposure
+// Purpose: Rank the software update recommendations by a transparent score so the patching effort goes to
+//          the few updates that close the most risk: affected machines, max CVSS, EPSS, known exploit kit,
+//          public disclosure and how many machines are production.
+// Source table(s): Azure Resource Graph, securityresources (microsoft.security/assessments, microsoft.security/cvedetails)
+// Parameters to edit: ProdSubscriptions, NonProdSubscriptions (subscription id lists that define the tiers; the placeholders below are not real ids),
+//          and the score weights in PriorityScore.
+// Notes/traps: PriorityScore = MaxCvss + 3 if any CVE is in an exploit kit + 2 if any is publicly disclosed
+//          + 10 x MaxEpss + 2 if any production machine is affected + log10(affected machines + 1). It is a
+//          sorting aid, not a risk rating. cvedetails rows are keyed by lower-case CVE id: the join key
+//          is lower-cased on both sides. CvesDetails is a JSON string, so parse_json(tostring(...)) before
+//          mv-expand. One join and one mv-expand, within the Resource Graph limit of three each.
+//          Recommendations without SoftwareName are not third-party software findings and are dropped.
+let ProdSubscriptions = dynamic(["prod-subscription-id"]);      // replace with your production subscription ids
+let NonProdSubscriptions = dynamic(["nonprod-subscription-id"]);   // replace with your non-production subscription ids
+securityresources
+| where type =~ "microsoft.security/assessments"
+| where properties.displayName startswith "Update "
+| where tostring(properties.status.code) == "Unhealthy"
+| extend softwareName = tostring(properties.additionalData.SoftwareName)
+| where isnotempty(softwareName)
+| extend maxCvss = todouble(properties.additionalData.MaxCvssScore)
+| extend envTier = case(subscriptionId in (ProdSubscriptions), "prod", subscriptionId in (NonProdSubscriptions), "nonprod", "other")
+| extend cves = parse_json(tostring(properties.additionalData.CvesDetails))
+| mv-expand cves limit 2000
+| extend cveId = tolower(tostring(cves.CveId))
+| join kind=leftouter (
+    securityresources
+    | where type == "microsoft.security/cvedetails"
+    | extend cveId = name
+    | extend epss = todouble(properties.exploitabilityDetails.Epss.Score)
+    | extend inExploitKit = tobool(properties.exploitabilityDetails.IsInExploitKit)
+    | extend publiclyDisclosed = tobool(properties.exploitabilityDetails.IsPubliclyDisclosed)
+    | project cveId, epss, inExploitKit, publiclyDisclosed
+) on cveId
+| summarize AffectedMachines = dcount(id), MaxCvss = max(maxCvss), MaxEpss = max(epss),
+            AnyExploitKit = max(iif(inExploitKit, 1, 0)), AnyPubliclyDisclosed = max(iif(publiclyDisclosed, 1, 0)),
+            ProdMachines = dcountif(id, envTier == "prod"), NonprodMachines = dcountif(id, envTier == "nonprod"),
+            OtherMachines = dcountif(id, envTier == "other")
+    by softwareName
+| extend PriorityScore = round(MaxCvss * 1.0 + (AnyExploitKit * 3) + (AnyPubliclyDisclosed * 2)
+                              + (MaxEpss * 10) + (iif(ProdMachines > 0, 2, 0)) + log10(AffectedMachines + 1), 2)
+| order by PriorityScore desc
+| project softwareName, AffectedMachines, ProdMachines, NonprodMachines, OtherMachines, MaxCvss, MaxEpss, AnyExploitKit, AnyPubliclyDisclosed, PriorityScore
+| limit 15

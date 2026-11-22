@@ -1,0 +1,13 @@
+// Title: Secure Score per subscription per week
+// Purpose: Trend of the Defender for Cloud Secure Score, as a percentage.
+// Source table(s): SecureScores (continuous export)
+// Parameters to edit: From, SubscriptionLabels (subscription id to label map).
+// Notes/traps: PercentageScore is a fraction (0..1), multiplied by 100 here. Weekly average of the
+//          exported snapshots, not an end-of-week value.
+let From = datetime(2026-01-01);
+let SubscriptionLabels = dynamic({"prod-subscription-id": "prod", "nonprod-subscription-id": "nonprod"});
+SecureScores
+| where TimeGenerated >= From
+| extend Sub = coalesce(tostring(SubscriptionLabels[SecureScoresSubscriptionId]), SecureScoresSubscriptionId)
+| summarize Pct = round(avg(PercentageScore) * 100, 1), snapshots = count() by Sub, Week = startofweek(TimeGenerated)
+| order by Sub asc, Week asc

@@ -1,0 +1,21 @@
+// Title: Which NIC / VM / subnet owns a private IP (or a whole range)
+// Purpose: Resolve an IP from a flow log, firewall log or ticket to the NIC, VM and subnet that hold it.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/networkinterfaces)
+// Parameters to edit: Ips (exact addresses) and/or Prefix (starts-with, e.g. '203.0.113.').
+// Notes/traps: a NIC with several IP configurations produces several rows (mv-expand).
+//          properties.virtualMachine.id is empty for NICs not attached to a VM (private endpoint NICs, orphans).
+//          Private endpoint NICs show the private endpoint name in nic, with no vm.
+let Ips = dynamic(['192.0.2.10', '192.0.2.11']);
+let Prefix = '';   // e.g. '203.0.113.' ; leave empty to match on Ips only
+resources
+| where type =~ 'microsoft.network/networkinterfaces'
+| mv-expand ipConfig = properties.ipConfigurations limit 400
+| extend ip = tostring(ipConfig.properties.privateIPAddress)
+| where ip in (Ips) or (Prefix != '' and ip startswith Prefix)
+| project ip, nic = name, resourceGroup, subscriptionId,
+    vm = tostring(split(tostring(properties.virtualMachine.id), '/')[8]),
+    subnet = tostring(split(tostring(ipConfig.properties.subnet.id), '/subnets/')[-1]),
+    vnet = tostring(split(tostring(ipConfig.properties.subnet.id), '/')[8]),
+    primary = tostring(ipConfig.properties.primary),
+    ipForwarding = tostring(properties.enableIPForwarding)
+| order by ip asc

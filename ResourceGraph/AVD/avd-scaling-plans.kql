@@ -1,0 +1,12 @@
+// Title: AVD scaling plans with time zone, schedules and host pool references
+// Purpose: Check autoscale configuration of pooled host pools.
+// Source table(s): Azure Resource Graph, resources (microsoft.desktopvirtualization/scalingplans)
+// Parameters to edit: none.
+// Notes/traps: schedules is a dynamic array (ramp-up, peak, ramp-down, off-peak), expand it for a per-phase table.
+//          A scaling plan only takes effect on host pools listed in hostPoolReferences with scalingPlanEnabled = true.
+resources
+| where type =~ 'microsoft.desktopvirtualization/scalingplans'
+| project name, resourceGroup, subscriptionId,
+    timeZone = tostring(properties.timeZone),
+    schedules = properties.schedules,
+    hostPools = properties.hostPoolReferences

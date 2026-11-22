@@ -1,0 +1,23 @@
+// Title: Pending software patches per VM (count, and the full patch list)
+// Purpose: How many patches wait on each VM, and which ones (name, classification, version, KB).
+// Source table(s): Azure Resource Graph, patchassessmentresources (softwarepatches child type)
+// Parameters to edit: VmName (empty = all VMs). Run query 1 for counts, query 2 for the list.
+// Notes/traps: this is the assessment view (what is missing), not what was installed.
+//          After installing, the data only refreshes with the next assessment; trigger an
+//          assess-patches run (az vm assess-patches) before concluding a patch failed.
+//
+// --- Query 1: counts per VM
+patchassessmentresources
+| where type has 'softwarepatches'
+| extend vm = tostring(split(id, '/')[8])
+| summarize pendingPatches = count(), lastAssessed = max(tostring(properties.lastModifiedDateTime)) by vm
+| order by pendingPatches desc
+//
+// --- Query 2: patch list (run separately)
+// let VmName = '';
+// patchassessmentresources
+// | where type has 'softwarepatches'
+// | extend vm = tostring(split(id, '/')[8])
+// | where VmName == '' or vm =~ VmName
+// | project vm, patch = tostring(properties.patchName), classification = tostring(properties.classifications),
+//     version = tostring(properties.version), kb = tostring(properties.kbId)

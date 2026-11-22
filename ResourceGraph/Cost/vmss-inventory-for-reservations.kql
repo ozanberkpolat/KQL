@@ -1,0 +1,13 @@
+// Title: Virtual machine scale sets (Uniform) with size, capacity and priority
+// Purpose: Scale set side of the reservation coverage input.
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachinescalesets)
+// Parameters to edit: none.
+// Notes/traps: Flexible orchestration scale sets are excluded on purpose, their instances are standalone
+//          VMs and already appear in the VM query. Capacity 0 sets are dropped.
+resources
+| where type =~ 'microsoft.compute/virtualmachinescalesets'
+| where tostring(properties.orchestrationMode) != 'Flexible'
+| where isnotempty(tostring(sku.name)) and toint(sku.capacity) > 0
+| project id, name, size = tostring(sku.name), capacity = toint(sku.capacity),
+    priority = tostring(properties.virtualMachineProfile.priority),
+    location, subscriptionId

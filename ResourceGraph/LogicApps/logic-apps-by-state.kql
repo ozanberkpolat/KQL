@@ -1,0 +1,19 @@
+// Title: Logic Apps (Consumption) with state, created and changed dates
+// Purpose: Inventory of workflows; count per state; find disabled ones.
+// Source table(s): Azure Resource Graph, resources (microsoft.logic/workflows)
+// Parameters to edit: StateFilter ('Disabled', 'Enabled' or empty for all).
+// Notes/traps: properties.state is Enabled / Disabled / Suspended. A Disabled workflow keeps its
+//          definition and run history but triggers nothing, check changedTime to see how long ago it was
+//          switched off. Standard (single-tenant) Logic Apps are microsoft.web/sites with kind workflowapp,
+//          not covered here.
+let StateFilter = 'Disabled';
+resources
+| where type =~ 'microsoft.logic/workflows'
+| extend state = tostring(properties.state)
+| where StateFilter == '' or state =~ StateFilter
+| project name, resourceGroup, subscriptionId, location, state,
+    created = substring(tostring(properties.createdTime), 0, 10),
+    changed = substring(tostring(properties.changedTime), 0, 10),
+    identityType = tostring(identity.type),
+    version = tostring(properties.version), id
+| order by state asc, resourceGroup asc, name asc

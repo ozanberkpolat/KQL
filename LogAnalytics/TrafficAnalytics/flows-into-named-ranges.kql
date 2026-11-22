@@ -1,0 +1,18 @@
+// Title: Flows into named subnets (for example the private endpoint subnets), grouped by source
+// Purpose: Which clients reach which private endpoint range, to decide whether an endpoint can be removed or an NSG tightened.
+// Source table(s): NTANetAnalytics
+// Parameters to edit: Ranges (name to CIDR map below), Lookback.
+// Notes/traps: ipv4_is_in_range takes one CIDR; the case() ladder maps each destination to a label. Add one
+//          line per range. Everything not matched falls to the last label, so keep the filter in the where clause in sync.
+let Lookback = 30d;
+NTANetAnalytics
+| where TimeGenerated > ago(Lookback)
+| where ipv4_is_in_range(DestIp, "198.51.100.0/27") or ipv4_is_in_range(DestIp, "198.51.100.32/27") or ipv4_is_in_range(DestIp, "203.0.113.0/27")
+| extend rangeName = case(
+    ipv4_is_in_range(DestIp, "198.51.100.0/27"), "pe-subnet-prod",
+    ipv4_is_in_range(DestIp, "198.51.100.32/27"), "pe-subnet-dev",
+    "pe-subnet-other")
+| summarize records = count(), destEndpoints = dcount(DestIp), ports = make_set(DestPort, 20), lastSeen = max(FlowEndTime)
+    by rangeName, SrcIp, SrcSubnet, SrcVm
+| order by rangeName asc, records desc
+| take 300

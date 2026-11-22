@@ -1,0 +1,19 @@
+// Title: Policy assignments with scope level, enforcement mode and initiative-or-definition
+// Purpose: What policy is assigned where, and whether it is actually enforced (DoNotEnforce = audit only).
+// Source table(s): Azure Resource Graph, policyresources
+// Parameters to edit: ManagementGroupName (shown as 'mg-root' when the scope ends with it).
+// Notes/traps: policyresources only lists assignments, use PolicyStates (az policy state summarize) for
+//          compliance results. The scope column shows the full scope id, shorten it for reports.
+let ManagementGroupName = 'mg-root';
+policyresources
+| where type =~ 'microsoft.authorization/policyassignments'
+| extend scope = tostring(properties.scope),
+         displayName = tostring(properties.displayName),
+         enforcementMode = tostring(properties.enforcementMode),
+         definition = tostring(split(tostring(properties.policyDefinitionId), '/')[-1]),
+         kind = iff(tostring(properties.policyDefinitionId) contains 'policySetDefinitions', 'initiative', 'definition')
+| extend scopeLevel = case(scope endswith ManagementGroupName, 'management group',
+                           scope contains '/resourceGroups/', 'resource group',
+                           scope startswith '/subscriptions/', 'subscription', scope)
+| project name, displayName, scopeLevel, scope, enforcementMode, kind, definition
+| order by scopeLevel asc, displayName asc

@@ -1,0 +1,12 @@
+// Title: EDR / endpoint protection assessment: counts by status code and cause
+// Purpose: Why is "EDR solution should be installed on Virtual Machines" unhealthy: no extension, VM off, unsupported OS, not onboarded.
+// Source table(s): Azure Resource Graph, securityresources (microsoft.security/assessments)
+// Parameters to edit: RecommendationName (display name).
+// Notes/traps: status.cause is the reason string, often empty for Healthy. A powered-off VM cannot be
+//          assessed, compare with VM power state (ResourceGraph/Compute/vm-inventory.kql).
+let RecommendationName = 'EDR solution should be installed on Virtual Machines';
+securityresources
+| where type =~ 'microsoft.security/assessments'
+| where properties.displayName == RecommendationName
+| extend cause = tostring(properties.status.cause), code = tostring(properties.status.code)
+| summarize resources = count() by code, cause

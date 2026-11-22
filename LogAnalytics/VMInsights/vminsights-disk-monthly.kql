@@ -1,0 +1,46 @@
+// Title: VM Insights logical disk usage per mount per month (with the KiB/MB unit fix)
+// Purpose: Monthly average and peak disk use per VM mount point: size, used MB/GB and used percent.
+// Source table(s): InsightsMetrics (Namespace LogicalDisk, Name FreeSpaceMB), VMComputer, Heartbeat
+// Parameters to edit: StartTime / EndTime, UtcOffsetHours, business-hours range (9 .. 16).
+// Notes/traps: UNIT TRAP. The sample tag vm.azm.ms/diskSizeMB is NOT always megabytes: on some mounts the
+//          agent reports a much larger number in other units. An unfixed report showed used percent around
+//          minus 104,857,500 % and went to a customer. The Scale column is the fix: when the raw size is
+//          above 10,000,000 it is divided by 1024 (Scale = 1024.0), otherwise left alone (Scale = 1.0).
+//          The threshold 10,000,000 "MB" would be a 9.5 TB disk, so a raw value above it is a unit error,
+//          not a real disk. SANITY-CHECK the output: AvgUsedPercent and MaxUsedPercent must be within
+//          0..100 for every row. If a mount still shows an impossible value, its raw unit is
+//          different again, inspect its diskSizeMB tag next to FreeSpaceMB for that mount.
+//          Rows are one per _ResourceId + MountId + month, the Computer column carries the mount so the
+//          rows stay distinguishable in a flat export. The join keys are lower-cased here (CPU/memory
+//          queries do not do that). Use --timespan covering the window.
+let StartTime = datetime(2026-01-01 00:00:00);
+let EndTime = datetime(2026-04-01 00:00:00);
+let UtcOffsetHours = 1;
+let Inventory = VMComputer
+| where TimeGenerated > ago(30d)
+| summarize arg_max(TimeGenerated, OperatingSystemFullName) by _ResourceId
+| project _ResourceId, FullOSName = OperatingSystemFullName;
+let BackupInventory = Heartbeat
+| where TimeGenerated > ago(30d)
+| summarize arg_max(TimeGenerated, OSName, OSType) by _ResourceId
+| project _ResourceId, SimpleOSName = coalesce(OSName, OSType);
+InsightsMetrics
+| where TimeGenerated between (StartTime .. EndTime)
+| where Namespace == "LogicalDisk"
+| where Name == "FreeSpaceMB"
+| extend LocalTime = datetime_add("hour", UtcOffsetHours, TimeGenerated)
+| where hourofday(LocalTime) between (9 .. 16)
+| extend MountId = tostring(parse_json(Tags)["vm.azm.ms/mountId"]), RawDiskSize = todouble(parse_json(Tags)["vm.azm.ms/diskSizeMB"]), YearMonth = format_datetime(LocalTime, "yyyy-MM")
+| extend Scale = iif(RawDiskSize > 10000000, 1024.0, 1.0)
+| summarize AvgFreeRaw = avg(Val), MinFreeRaw = min(Val), SizeRaw = max(RawDiskSize), Scale = max(Scale), ComputerName = any(Computer) by _ResourceId, MountId, YearMonth
+| extend DiskSizeMB = round(SizeRaw / Scale, 2), DiskSizeGB = round(SizeRaw / Scale / 1024.0, 2), AvgUsedMB = round((SizeRaw - AvgFreeRaw) / Scale, 2), MaxUsedMB = round((SizeRaw - MinFreeRaw) / Scale, 2)
+| extend AvgUsedGB = round(AvgUsedMB / 1024.0, 2), MaxUsedGB = round(MaxUsedMB / 1024.0, 2), AvgUsedPercent = iif(SizeRaw == 0, 0.0, round((SizeRaw - AvgFreeRaw) * 100.0 / SizeRaw, 2)), MaxUsedPercent = iif(SizeRaw == 0, 0.0, round((SizeRaw - MinFreeRaw) * 100.0 / SizeRaw, 2))
+| join kind=leftouter (Inventory
+| extend JoinID = tolower(_ResourceId)) on $left._ResourceId == $right.JoinID
+| join kind=leftouter (BackupInventory
+| extend JoinID = tolower(_ResourceId)) on $left._ResourceId == $right.JoinID
+| extend RawOS = coalesce(FullOSName, SimpleOSName, "Unknown")
+| extend CleanOS = iff(RawOS contains "Red Hat", "Red Hat Enterprise Linux", RawOS)
+| extend FinalComputerName = strcat(ComputerName, " Storage ", MountId)
+| project Computer = FinalComputerName, MountId, YearMonth, DiskSizeMB, DiskSizeGB, AvgUsedMB, AvgUsedGB, MaxUsedMB, MaxUsedGB, AvgUsedPercent, MaxUsedPercent, OperatingSystem = CleanOS
+| order by Computer asc, MountId asc, YearMonth asc

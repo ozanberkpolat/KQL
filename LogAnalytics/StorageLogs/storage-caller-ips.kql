@@ -1,0 +1,21 @@
+// Title: Caller IPs, user agents and containers for a storage account
+// Purpose: Identify real clients: caller IP (port stripped), authentication type, operation, container and user agent.
+// Source table(s): StorageBlobLogs, StorageFileLogs
+// Parameters to edit: TargetAccount, Lookback.
+// Notes/traps: CallerIpAddress carries a port ("203.0.113.5:49321"), strip it with split(...,':')[0]
+//          before dcount or you count every connection as a new client (IPv6 callers need extra care, the
+//          colon split truncates them). The container is the first path segment of Uri, parse_url(Uri).Path.
+//          Requests from private endpoints show the private IP of the client, not the endpoint.
+let TargetAccount = "stappprod001";
+let Lookback = 14d;
+union StorageBlobLogs, StorageFileLogs
+| where AccountName == TargetAccount
+| where TimeGenerated > ago(Lookback)
+| extend Ip = tostring(split(CallerIpAddress, ':')[0])
+| where isnotempty(Ip)
+| extend Container = tostring(split(tostring(parse_url(Uri).Path), '/')[1])
+| summarize Operations = count(), Last = max(TimeGenerated),
+            AuthTypes = make_set(AuthenticationType, 4), UserAgents = make_set(UserAgentHeader, 2), Containers = make_set(Container, 5)
+    by Ip
+| order by Operations desc
+| take 25

@@ -1,0 +1,15 @@
+// Title: Heartbeat continuity of one VM in 5 minute bins
+// Purpose: Spot reboots, agent outages and restore gaps: bins with no heartbeat.
+// Source table(s): Heartbeat
+// Parameters to edit: VmName, Lookback, BinSize.
+// Notes/traps: a normal agent sends one heartbeat per minute, so a 5 minute bin should hold about 5.
+//          Missing bins do not appear as zero rows, compare the bin list against the expected range
+//          (or use make-series) when you need explicit zeros.
+let VmName = "vm-app-01";
+let Lookback = 40m;
+let BinSize = 5m;
+Heartbeat
+| where TimeGenerated > ago(Lookback)
+| where Computer has VmName
+| summarize heartbeats = count(), first = min(TimeGenerated), last = max(TimeGenerated) by bin(TimeGenerated, BinSize)
+| order by TimeGenerated asc

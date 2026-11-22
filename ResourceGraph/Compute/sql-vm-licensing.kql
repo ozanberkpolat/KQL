@@ -1,0 +1,12 @@
+// Title: SQL Server on Azure VM: image, SKU, management mode and licence type
+// Purpose: Licence and management audit of SQL IaaS VMs (Azure Hybrid Benefit, lightweight vs full mode).
+// Source table(s): Azure Resource Graph, resources (microsoft.sqlvirtualmachine/sqlvirtualmachines)
+// Parameters to edit: none.
+// Notes/traps: a SQL Server VM that is not registered with the SQL IaaS extension does not appear here at all.
+resources
+| where type =~ 'microsoft.sqlvirtualmachine/sqlvirtualmachines'
+| project name, resourceGroup, subscriptionId,
+    imageOffer = tostring(properties.sqlImageOffer),
+    imageSku = tostring(properties.sqlImageSku),
+    management = tostring(properties.sqlManagement),
+    licenseType = tostring(properties.sqlServerLicenseType)

@@ -1,0 +1,13 @@
+// Title: Managed disk encryption type and network access summary
+// Purpose: Count managed disks by encryption type (platform key / customer key / both), whether a
+//          disk encryption set is attached, and the disk network access policy.
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/disks)
+// Parameters to edit: none. To look at one VM add: | where managedBy contains '<vm-name>'
+// Notes/traps: properties.encryption.type values look like EncryptionAtRestWithPlatformKey /
+//          EncryptionAtRestWithCustomerKey. Unattached disks have an empty managedBy.
+resources
+| where type =~ 'microsoft.compute/disks'
+| extend encryptionType = tostring(properties.encryption.type),
+         hasDiskEncryptionSet = isnotempty(properties.encryption.diskEncryptionSetId),
+         networkAccessPolicy = tostring(properties.networkAccessPolicy)
+| summarize disks = count() by encryptionType, hasDiskEncryptionSet, networkAccessPolicy

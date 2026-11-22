@@ -1,0 +1,20 @@
+// Title: Which maintenance configuration is assigned to which VM, and how many VMs per configuration
+// Purpose: Verify patch schedule assignment, find VMs with no schedule (join with the VM list).
+// Source table(s): Azure Resource Graph, maintenanceresources (configurationassignments)
+// Parameters to edit: Query 1: VmNames (empty = all). Query 2 needs no parameters.
+// Notes/traps: the table is maintenanceresources, not resources. Dynamic (filter-based) assignments
+//          do not list individual VMs here; their filter is in properties.filter. A VM without any row has
+//          NO schedule. For tag-vs-reality comparison see Governance-Tags/vm-tag-compliance-lists.kql.
+//
+// --- Query 1: assignments per VM
+let VmNames = dynamic([]);
+maintenanceresources
+| where type =~ 'microsoft.maintenance/configurationassignments'
+| extend vm = tostring(split(id, '/')[8]), config = tostring(split(tostring(properties.maintenanceConfigurationId), '/')[8])
+| where array_length(VmNames) == 0 or vm in~ (VmNames)
+| project vm, config, filter = tostring(properties.filter), location
+//
+// --- Query 2: VMs per configuration (run separately)
+// maintenanceresources
+// | where type =~ 'microsoft.maintenance/configurationassignments'
+// | summarize vms = count() by config = tolower(tostring(split(tostring(properties.maintenanceConfigurationId), '/')[8]))

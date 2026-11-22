@@ -1,0 +1,34 @@
+// Title: Defender for Cloud recommendation state changes per VM (Healthy to Unhealthy and back)
+// Purpose: Evidence of remediation progress: which recommendations flipped to Healthy (fixed) or Unhealthy
+//          (regressed) in a period, with a roll-up per recommendation.
+// Source table(s): SecurityRecommendation (continuous export of Defender for Cloud assessments to the workspace)
+// Parameters to edit: DataStart (when to start reading snapshots), ChangesFrom (only report transitions after this), DataEnd,
+//          ExcludeNamePrefix (recommendation names to ignore, e.g. noisy antivirus scan checks).
+// Notes/traps: the table must be fed by continuous export, there is no history otherwise. Transitions are
+//          found by sorting per VM + recommendation by time and comparing with prev(); read from an
+//          EARLIER DataStart than ChangesFrom, so the first snapshot after ChangesFrom has a previous
+//          state to compare with. prev() needs the data serialized, which order by does. VM name is
+//          extracted from AssessedResourceId with a regex. Query 1 is the roll-up, query 2 the row detail.
+//
+// --- Query 1: roll-up per recommendation
+let DataStart = datetime(2026-01-01);
+let DataEnd = datetime(2026-04-01);
+let ChangesFrom = datetime(2026-02-01);
+let ExcludeNamePrefix = "Anti-Virus";
+SecurityRecommendation
+| where TimeGenerated >= DataStart and TimeGenerated < DataEnd
+| where AssessedResourceId matches regex @"(?i)/virtualmachines/[^/]+$"
+| where RecommendationState in ("Healthy", "Unhealthy")
+| where not(RecommendationDisplayName startswith ExcludeNamePrefix)
+| extend Vm = tolower(extract(@"(?i)/virtualmachines/([^/]+)$", 1, AssessedResourceId))
+| project TimeGenerated, Vm, RecommendationName, RecommendationDisplayName, RecommendationState, RecommendationSeverity
+| order by Vm asc, RecommendationName asc, TimeGenerated asc
+| extend PrevState = iff(prev(Vm) == Vm and prev(RecommendationName) == RecommendationName, prev(RecommendationState), "")
+| where TimeGenerated >= ChangesFrom and PrevState != "" and PrevState != RecommendationState
+| summarize ToHealthy = countif(RecommendationState == "Healthy"), ToUnhealthy = countif(RecommendationState == "Unhealthy"), Vms = dcount(Vm)
+    by RecommendationDisplayName, RecommendationSeverity
+| order by ToHealthy desc
+//
+// --- Query 2: row detail (run separately; same lets and filter, replace the summarize with):
+// | project TimeGenerated, Vm, RecommendationDisplayName, RecommendationSeverity, PreviousState = PrevState, NewState = RecommendationState
+// | order by TimeGenerated asc, Vm asc

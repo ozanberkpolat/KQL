@@ -1,0 +1,18 @@
+// Title: Backup jobs per vault and operation: completed, failed, other
+// Purpose: One-glance health of every vault over the last weeks (for audit evidence).
+// Source table(s): AddonAzureBackupJobs
+// Parameters to edit: Lookback.
+// Notes/traps: arg_max by JobUniqueId + Vault + JobOperation keeps the final state of each job. The vault is
+//          the 9th segment of _ResourceId.
+let Lookback = 35d;
+AddonAzureBackupJobs
+| where TimeGenerated > ago(Lookback)
+| extend Vault = tostring(split(_ResourceId, "/")[8])
+| summarize arg_max(TimeGenerated, JobStatus) by JobUniqueId, Vault, JobOperation
+| summarize Jobs = count(),
+            Completed = countif(JobStatus == "Completed"),
+            Failed = countif(JobStatus == "Failed"),
+            Other = countif(JobStatus !in ("Completed", "Failed")),
+            Last = max(TimeGenerated)
+    by Vault, JobOperation
+| order by Vault asc

@@ -1,0 +1,34 @@
+// Title: FortiGate traffic matrix between named network segments, per day
+// Purpose: Prove segmentation: for each day, how many sessions crossed from one named segment to another,
+//          how many were allowed or denied, which policies allow or deny, and how many distinct segment pairs talk.
+// Source table(s): Syslog
+// Parameters to edit: the Seg() function below maps an IP to a segment name. Replace the example CIDRs with your
+//          own address plan. FirewallPrefix, From, To.
+// Notes/traps: ipv4_is_in_any_range takes an array of CIDRs, the case() returns "" for unmapped IPs, those
+//          rows are dropped so unknown space does not look like a segment. Intra-segment traffic
+//          (same name on both sides) is excluded because it does not cross a boundary. The result is a
+//          per-day roll-up, remove the summarize for the underlying flows. Large time ranges on
+//          Syslog are expensive, narrow the window.
+let FirewallPrefix = "fw-";
+let From = datetime(2026-01-01);
+let To = datetime(2026-02-01);
+let Seg = (ip: string) {
+    case(
+    ipv4_is_in_any_range(ip, dynamic(["198.51.100.0/24"])), "app-prod",
+    ipv4_is_in_any_range(ip, dynamic(["203.0.113.0/26", "203.0.113.64/26"])), "db-prod",
+    ipv4_is_in_any_range(ip, dynamic(["192.0.2.0/25"])), "dmz",
+    ipv4_is_in_any_range(ip, dynamic(["192.0.2.128/25"])), "management",
+    "")
+};
+Syslog
+| where TimeGenerated >= From and TimeGenerated < To
+| where Computer startswith FirewallPrefix
+| where SyslogMessage has "cat=traffic:forward"
+| parse SyslogMessage with * " src=" Src " " * " dst=" Dst " " * "FTNTFGTaction=" Action " " * "FTNTFGTpolicyid=" PolicyId " " *
+| extend SrcSegment = Seg(Src), DstSegment = Seg(Dst)
+| where isnotempty(SrcSegment) and isnotempty(DstSegment) and SrcSegment != DstSegment
+| summarize Sessions = count(), Allowed = countif(Action != "deny"), Denied = countif(Action == "deny"),
+            SegmentPairs = dcount(strcat(SrcSegment, ">", DstSegment)),
+            AllowPolicies = make_set_if(PolicyId, Action != "deny"), DenyPolicies = make_set_if(PolicyId, Action == "deny")
+    by Day = startofday(TimeGenerated)
+| order by Day asc

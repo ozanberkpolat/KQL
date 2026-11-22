@@ -1,0 +1,23 @@
+// Title: Private endpoints with target resource, sub-resource, subnet, VNet and private IP
+// Purpose: Complete private endpoint list: what each endpoint connects to and where it sits.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/privateendpoints)
+// Parameters to edit: Region (optional, empty = all regions).
+// Notes/traps: the private IP is in properties.customDnsConfigs[0].ipAddresses[0] and is empty when the
+//          endpoint has no DNS zone group / custom DNS config yet. One endpoint can have several
+//          privateLinkServiceConnections (and manualPrivateLinkServiceConnections for approval flows),
+//          this query reads the automatic ones only.
+let Region = '';   // e.g. 'westeurope'
+resources
+| where type =~ 'microsoft.network/privateendpoints'
+| where Region == '' or location =~ Region
+| extend subnetId = tostring(properties.subnet.id),
+         ip = tostring(properties.customDnsConfigs[0].ipAddresses[0])
+| mv-expand conn = properties.privateLinkServiceConnections limit 400
+| mv-expand groupId = conn.properties.groupIds limit 400
+| project peName = name, resourceGroup, subscriptionId,
+    vnet = tostring(split(subnetId, '/')[8]),
+    subnet = tostring(split(subnetId, '/subnets/')[-1]),
+    ip,
+    group = tostring(groupId),
+    target = tostring(split(tostring(conn.properties.privateLinkServiceId), '/')[-1])
+| order by target asc

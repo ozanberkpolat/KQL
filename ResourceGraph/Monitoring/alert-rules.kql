@@ -1,0 +1,16 @@
+// Title: Alert rules (metric, log, activity log) with enabled state
+// Purpose: List every alert rule and whether it is enabled; optionally only rules wired to action groups
+//          whose name contains a fragment.
+// Source table(s): Azure Resource Graph, resources (microsoft.insights/*)
+// Parameters to edit: ActionGroupContains (optional action group name fragment).
+// Notes/traps: enabled is properties.enabled for metric/log-search rules and properties.isEnabled for others,
+//          hence coalesce. Action group reference sits in properties.actions (log search: actions.actionGroups array).
+//          Disabled rules do not fire and do not warn, review them periodically.
+let ActionGroupContains = '';
+resources
+| where type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules', 'microsoft.insights/activitylogalerts')
+| extend enabled = tostring(coalesce(properties.enabled, properties.isEnabled)),
+         actionGroups = tostring(coalesce(properties.actions.actionGroups, properties.actions))
+| where ActionGroupContains == '' or tolower(actionGroups) contains tolower(ActionGroupContains)
+| project name, type, resourceGroup, subscriptionId, enabled, actionGroups
+| order by enabled asc, name asc

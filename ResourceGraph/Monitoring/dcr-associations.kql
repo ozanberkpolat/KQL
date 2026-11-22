@@ -1,0 +1,15 @@
+// Title: Which data collection rules are associated with which VMs
+// Purpose: Per VM list of DCRs. A VM with no association is not collecting through the Azure Monitor Agent.
+// Source table(s): Azure Resource Graph, insightsresources (datacollectionruleassociations)
+// Parameters to edit: VmNames (empty = all VMs).
+// Notes/traps: the table is insightsresources, not resources. The VM name is the 9th id segment.
+//          Associations without a dataCollectionRuleId are endpoint associations, filtered out here.
+let VmNames = dynamic([]);
+insightsresources
+| where type =~ 'microsoft.insights/datacollectionruleassociations'
+| extend vm = tostring(split(id, '/')[8]),
+         dcr = tostring(split(tostring(properties.dataCollectionRuleId), '/')[8])
+| where isnotempty(dcr)
+| where array_length(VmNames) == 0 or vm in~ (VmNames)
+| summarize dcrs = make_set(dcr) by vm
+| order by vm asc

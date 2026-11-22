@@ -1,0 +1,56 @@
+// Title: Network topology extract (subscriptions, RGs, VNets, subnets, peerings, NICs, private endpoints)
+// Purpose: Raw edge/node lists to build a network diagram or a dependency map outside Azure.
+//          Each block is one separate Resource Graph query, run them one by one and join client-side.
+// Source table(s): Azure Resource Graph, resourcecontainers, resources
+// Parameters to edit: Block 8 uses a type list, replace the dynamic([...]) with the resource types you want as nodes.
+// Notes/traps: all ids are lower-cased on purpose, because ARM returns resource ids with inconsistent
+//          casing and a client-side join on the raw ids silently drops rows. Do not remove tolower().
+//
+// ---- 1 subscriptions
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions'
+| project id = tolower(id), subscriptionId = tolower(subscriptionId), name
+//
+// ---- 2 resource groups
+// resourcecontainers
+// | where type =~ 'microsoft.resources/subscriptions/resourcegroups'
+// | project id = tolower(id), name = tolower(name), sub = tolower(subscriptionId), location
+//
+// ---- 3 vnets
+// resources
+// | where type =~ 'microsoft.network/virtualnetworks'
+// | project id = tolower(id), name, rg = tolower(resourceGroup), sub = tolower(subscriptionId)
+//
+// ---- 4 subnets
+// resources
+// | where type =~ 'microsoft.network/virtualnetworks'
+// | extend vnetId = tolower(id)
+// | mv-expand sn = properties.subnets limit 400
+// | project subnetId = tolower(tostring(sn.id)), name = tostring(sn.name), vnetId, prefix = tostring(sn.properties.addressPrefix)
+//
+// ---- 5 peerings
+// resources
+// | where type =~ 'microsoft.network/virtualnetworks'
+// | extend vnetId = tolower(id)
+// | mv-expand peer = properties.virtualNetworkPeerings limit 400
+// | project vnetId, remoteId = tolower(tostring(peer.properties.remoteVirtualNetwork.id)), name = tostring(peer.name)
+//
+// ---- 6 NIC -> subnet -> VM
+// resources
+// | where type =~ 'microsoft.network/networkinterfaces'
+// | mv-expand ipc = properties.ipConfigurations limit 400
+// | project vmId = tolower(tostring(properties.virtualMachine.id)), subnetId = tolower(tostring(ipc.properties.subnet.id))
+// | where isnotempty(subnetId) and isnotempty(vmId)
+//
+// ---- 7 private endpoints -> target
+// resources
+// | where type =~ 'microsoft.network/privateendpoints'
+// | extend peId = tolower(id), peName = name, peRg = tolower(resourceGroup), peSub = tolower(subscriptionId), peSubnet = tolower(tostring(properties.subnet.id))
+// | mv-expand conn = properties.privateLinkServiceConnections limit 400
+// | project id = peId, name = peName, rg = peRg, sub = peSub, subnetId = peSubnet, targetId = tolower(tostring(conn.properties.privateLinkServiceId))
+//
+// ---- 8 other nodes of the types you care about
+// let Types = dynamic(['microsoft.compute/virtualmachines', 'microsoft.network/applicationgateways']);
+// resources
+// | where type in~ (Types)
+// | project id = tolower(id), name, type = tolower(type), rg = tolower(resourceGroup), sub = tolower(subscriptionId), location, sku = tostring(sku.name), kind, tags

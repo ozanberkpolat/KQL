@@ -1,0 +1,13 @@
+// Title: VM zone, availability set, security type and hyper-v generation
+// Purpose: Resilience view: which VMs are zonal, in an availability set, or neither.
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachines)
+// Parameters to edit: add a where clause (e.g. on resourceGroup) to narrow the scope.
+// Notes/traps: zones is an array, tostring() gives '["1"]'; empty means not zonal.
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| project name, resourceGroup, subscriptionId,
+    zone = tostring(zones),
+    availabilitySet = tostring(split(tostring(properties.availabilitySet.id), '/')[8]),
+    securityType = tostring(properties.securityProfile.securityType),
+    hyperVGeneration = tostring(properties.extended.instanceView.hyperVGeneration)
+| order by name asc

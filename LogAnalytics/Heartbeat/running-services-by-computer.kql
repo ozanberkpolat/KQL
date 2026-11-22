@@ -1,0 +1,21 @@
+// Title: Which database / messaging / mail services run on which machine (ConfigurationData)
+// Purpose: Discover workload roles from the service inventory: SQL Server, Oracle, Exchange (Windows services)
+//          and database or message-queue daemons (Linux).
+// Source table(s): ConfigurationData (ConfigDataType WindowsServices, Daemons)
+// Parameters to edit: WindowsServicePrefixes, LinuxDaemonHints, Lookback.
+// Notes/traps: requires Change Tracking and Inventory with the Services / Daemons data types enabled.
+//          Linux daemon names are lower-case, match with has_any on lower-case hints.
+let Lookback = 7d;
+let WindowsServicePrefixes = dynamic(["MSSQL", "SQLServer", "MSExchange", "OracleService"]);
+let LinuxDaemonHints = dynamic(["mssql", "ora_", "oracle", "postgres", "mysql", "mariadb", "ibmmq", "sshd"]);
+union isfuzzy=true
+(ConfigurationData
+ | where TimeGenerated > ago(Lookback)
+ | where ConfigDataType == "WindowsServices"
+ | where SvcName has_any (WindowsServicePrefixes)
+ | summarize Services = make_set(SvcName), States = make_set(SvcState) by Computer),
+(ConfigurationData
+ | where TimeGenerated > ago(Lookback)
+ | where ConfigDataType == "Daemons"
+ | where SvcName has_any (LinuxDaemonHints)
+ | summarize Services = make_set(SvcName), States = make_set(SvcState) by Computer)

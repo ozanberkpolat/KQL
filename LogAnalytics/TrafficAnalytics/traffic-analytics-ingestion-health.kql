@@ -1,0 +1,24 @@
+// Title: Is Traffic Analytics data arriving? Records per hour and per table
+// Purpose: Check ingestion before you trust (or blame) a flow query: how many records per bin, last record,
+//          and which Traffic Analytics tables exist.
+// Source table(s): AzureNetworkAnalytics_CL, NTANetAnalytics, NTAIpDetails
+// Parameters to edit: Lookback.
+// Notes/traps: after re-pointing flow logs to another workspace or re-enabling Traffic Analytics the data
+//          gap can last an hour or more. NTA* tables are the new schema, AzureNetworkAnalytics_CL is the
+//          legacy custom log, both can exist side by side. `evaluate narrow()` shows one row's
+//          columns, handy to learn the schema.
+//
+// --- Query 1: records per table
+let Lookback = 6h;
+union isfuzzy=true AzureNetworkAnalytics_CL, NTANetAnalytics, NTAIpDetails
+| where TimeGenerated > ago(Lookback)
+| summarize records = count(), lastRecord = max(TimeGenerated) by Type
+//
+// --- Query 2: records per hour for the legacy table (run separately)
+// AzureNetworkAnalytics_CL
+// | where TimeGenerated > ago(6h)
+// | summarize Records = count(), Last = max(TimeGenerated) by bin(TimeGenerated, 1h)
+// | order by TimeGenerated desc
+//
+// --- Query 3: one NTAIpDetails row with all columns (run separately)
+// NTAIpDetails | where TimeGenerated > ago(2h) | take 1 | evaluate narrow() | project Column, Value

@@ -1,0 +1,28 @@
+// Title: Denied flows and RPC / high-port traffic between two address ranges
+// Purpose: Prove or disprove "the firewall rule blocks X": look for denied flows, RPC endpoint mapper (135),
+//          a fixed port range or ephemeral ports (49152+) between two host sets.
+// Source table(s): NTANetAnalytics (new schema), AzureNetworkAnalytics_CL (legacy schema)
+// Parameters to edit: HostsA (exact IPs), RangeB prefix, ports of interest.
+// Notes/traps: the legacy table uses suffixed columns (SrcIP_s, DestIP_s, DestPort_d is a double, FlowStatus_s
+//          "A"/"D" for allowed/denied, NSGList_s, NSGRules_s). Use toint() on the port column. SubType_s
+//          == "FlowLog" filters out the topology rows that share the table.
+//
+// --- Query 1: NTANetAnalytics
+let HostsA = dynamic(["192.0.2.80", "192.0.2.81"]);
+let RangeBPrefix = "198.51.100.";
+NTANetAnalytics
+| where (SrcIp in (HostsA) and DestIp startswith RangeBPrefix) or (DestIp in (HostsA) and SrcIp startswith RangeBPrefix)
+| where DestPort == 135 or DestPort between (14000 .. 15000) or DestPort >= 49152 or FlowStatus != "Allowed"
+| summarize n = count(), firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated)
+    by SrcIp, DestIp, DestPort, FlowStatus, AclRule
+| order by lastSeen desc
+//
+// --- Query 2: legacy table, denied flows of one NSG (run separately)
+// let HostsA = dynamic(["192.0.2.80", "192.0.2.81"]);
+// AzureNetworkAnalytics_CL
+// | where SubType_s == "FlowLog" and NSGList_s has "nsg-example" and FlowStatus_s == "D"
+// | extend dpt = toint(DestPort_d)
+// | where SrcIP_s in (HostsA) or DestIP_s in (HostsA) or dpt == 135 or dpt between (14000 .. 15000) or dpt >= 49152
+// | summarize n = count(), firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated)
+//     by FlowDirection_s, SrcIP_s, DestIP_s, dpt, NSGRules_s
+// | order by lastSeen desc

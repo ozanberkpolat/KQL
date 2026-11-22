@@ -1,0 +1,38 @@
+// Title: Which VMs and subnets talk to Azure Storage public IPs
+// Purpose: Find the clients of storage accounts that you want to put behind private endpoints (before blocking public access).
+// Source table(s): NTAIpDetails, NTANetAnalytics
+// Parameters to edit: Lookback.
+// Notes/traps: NTAIpDetails maps IPs to public service names (PublicIpDetails == 'AzureStorage'). Query 1
+//          groups per source VM and subnet, query 2 per flow-log target with GB transferred.
+//          Flow logs only see traffic that goes out through the VNet, not traffic from outside Azure.
+//
+// --- Query 1: per source VM / subnet
+let Lookback = 24h;
+let StorageIps = NTAIpDetails
+| where TimeGenerated > ago(Lookback)
+| where PublicIpDetails == 'AzureStorage'
+| distinct Ip;
+NTANetAnalytics
+| where TimeGenerated > ago(Lookback)
+| where SubType == 'FlowLog'
+| where DestIp in (StorageIps)
+| summarize Flows = sum(AllowedOutFlows) + sum(AllowedInFlows),
+            Denied = sum(DeniedOutFlows) + sum(DeniedInFlows),
+            MB = round((sum(BytesSrcToDest) + sum(BytesDestToSrc)) / 1024.0 / 1024.0, 1),
+            Ports = make_set(DestPort, 5)
+    by SrcVm, SrcSubnet
+| order by Flows desc
+| take 25
+//
+// --- Query 2: per flow-log target with volume (run separately, Lookback 7d)
+// let Lookback = 7d;
+// let StorageIps = NTAIpDetails | where TimeGenerated > ago(Lookback) | where PublicIpDetails == 'AzureStorage' | distinct Ip;
+// NTANetAnalytics
+// | where TimeGenerated > ago(Lookback)
+// | where SubType == 'FlowLog'
+// | where DestIp in (StorageIps)
+// | summarize Flows = sum(AllowedOutFlows) + sum(AllowedInFlows),
+//             GB = round((sum(BytesSrcToDest) + sum(BytesDestToSrc)) / 1073741824.0, 2),
+//             Sources = dcount(SrcIp)
+//     by TargetResourceId
+// | order by GB desc

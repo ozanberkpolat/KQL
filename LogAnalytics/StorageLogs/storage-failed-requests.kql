@@ -1,0 +1,24 @@
+// Title: Failed and denied storage requests (HTTP 403 and other errors)
+// Purpose: Why do clients get Forbidden: operation, caller, auth type, status text, URI. Also request counts per 10 minutes by status.
+// Source table(s): StorageBlobLogs
+// Parameters to edit: TargetAccount, StatusCodeFilter (e.g. 403), Lookback.
+// Notes/traps: StatusText distinguishes AuthorizationFailure, AuthorizationPermissionMismatch,
+//          AuthenticationFailed and network rule denials. After a firewall or private endpoint change, a
+//          burst of 403 AuthorizationFailure from the old callers is expected.
+let TargetAccount = "stappprod001";
+let StatusCodeFilter = 403;
+let Lookback = 12h;
+StorageBlobLogs
+| where AccountName == TargetAccount
+| where TimeGenerated > ago(Lookback)
+| where StatusCode == StatusCodeFilter
+| project TimeGenerated, AuthenticationType, OperationName, CallerIpAddress, StatusText, Uri
+| order by TimeGenerated desc
+| take 50
+//
+// --- Query 2: status trend per 10 minutes (run separately)
+// StorageBlobLogs
+// | where AccountName == "stappprod001"
+// | where TimeGenerated > ago(12h)
+// | summarize n = count() by bin(TimeGenerated, 10m), AuthenticationType, StatusCode
+// | order by TimeGenerated desc

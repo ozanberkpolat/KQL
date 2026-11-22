@@ -1,0 +1,22 @@
+// Title: Update Manager assessment result per VM (pending patch counts, reboot pending)
+// Purpose: Latest patch assessment per VM: status, when it ran, pending critical / security / other patches.
+// Source table(s): Azure Resource Graph, patchassessmentresources
+// Parameters to edit: OsType ('Linux', 'Windows' or empty for both).
+// Notes/traps: the result table also contains the child type .../patchassessmentresults/softwarepatches
+//          (one row per pending patch). Filter on the exact parent type, or use `type has ... and type !has
+//          'softwarepatches'`, otherwise counts explode. Windows VMs report the classifications
+//          critical/security/updateRollup/featurePack/servicePack/definition/tools/updates, so the
+//          three columns here are a simplification.
+let OsType = '';
+patchassessmentresources
+| where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'
+| extend vm = tostring(split(id, '/')[8]), p = properties
+| where OsType == '' or tostring(p.osType) =~ OsType
+| project vm, subscriptionId, osType = tostring(p.osType),
+    status = tostring(p.status),
+    lastAssessed = todatetime(p.lastModifiedDateTime),
+    rebootPending = tostring(p.rebootPending),
+    critical = toint(p.availablePatchCountByClassification.critical),
+    security = toint(p.availablePatchCountByClassification.security),
+    other = toint(p.availablePatchCountByClassification.other)
+| order by vm asc

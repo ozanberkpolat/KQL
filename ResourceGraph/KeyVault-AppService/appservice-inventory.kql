@@ -1,0 +1,21 @@
+// Title: App Service / Function App inventory (state, identity, HTTPS, public access, private endpoints, VNet integration)
+// Purpose: One row per web app with the network and identity settings relevant to isolation work.
+// Source table(s): Azure Resource Graph, resources (microsoft.web/sites)
+// Parameters to edit: KindFilter (e.g. 'functionapp' to list function apps only, empty = all).
+// Notes/traps: virtualNetworkSubnetId set = regional VNet integration (outbound). It says nothing about
+//          inbound; inbound isolation is a private endpoint plus publicNetworkAccess Disabled. A site
+//          can have a private endpoint AND still allow public access. kind contains 'functionapp' for
+//          function apps, 'app' for web apps, 'linux' / 'container' flags the platform.
+let KindFilter = '';
+resources
+| where type =~ 'microsoft.web/sites'
+| where KindFilter == '' or kind contains KindFilter
+| project name, kind, resourceGroup, subscriptionId, location,
+    state = tostring(properties.state),
+    identity = tostring(identity.type),
+    httpsOnly = tostring(properties.httpsOnly),
+    publicNetworkAccess = tostring(properties.publicNetworkAccess),
+    privateEndpoints = array_length(properties.privateEndpointConnections),
+    vnetIntegration = iff(isnull(properties.virtualNetworkSubnetId), 'no', 'yes'),
+    plan = tostring(split(tostring(properties.serverFarmId), '/')[-1])
+| order by subscriptionId asc, name asc

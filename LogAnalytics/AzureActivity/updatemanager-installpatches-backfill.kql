@@ -1,0 +1,24 @@
+// Title: Update Manager runs older than the Resource Graph window, rebuilt from AzureActivity
+// Purpose: The patch installation history in Resource Graph is only kept about 30 days. This reads the
+//          installPatches operations from the activity log (kept 90 days in the workspace) to fill the gap
+//          for monthly reports.
+// Source table(s): AzureActivity
+// Parameters to edit: From, To.
+// Notes/traps: the status detail is JSON inside Properties.statusMessage, a string that must be parsed a
+//          second time. SubmissionFailed means the request was rejected before running, drop it.
+//          ActivityStatusValue has both Succeeded/Failed and Success/Failure spellings, keep all four.
+//          eventDataId is the best unique key, fall back to CorrelationId + resource id.
+//          Pair with ResourceGraph/UpdateManager/patch-installation-results.kql and de-duplicate by VM + start time.
+let From = datetime(2026-01-01);
+let To = datetime(2026-02-01);
+AzureActivity
+| where TimeGenerated between (From .. To)
+| where OperationNameValue =~ 'microsoft.compute/virtualmachines/installPatches/action'
+| where ActivityStatusValue in ('Succeeded', 'Failed', 'Success', 'Failure')
+| extend pr = parse_json(Properties)
+| extend sm = parse_json(tostring(pr.statusMessage))
+| extend st = tostring(sm.status)
+| where st != 'SubmissionFailed'
+| project eventId = coalesce(tostring(pr.eventDataId), strcat(CorrelationId, '/', _ResourceId)),
+          resourceId = tolower(_ResourceId), TimeGenerated, startTime = tostring(pr.startTime),
+          ActivityStatusValue, error = tostring(sm.error), Caller

@@ -1,0 +1,22 @@
+// Title: Update Manager runs that did not succeed (recent)
+// Purpose: Failed, partially failed or cancelled patch runs in the last N days, newest first.
+// Source table(s): Azure Resource Graph, patchinstallationresources
+// Parameters to edit: SinceDays.
+// Notes/traps: status values are Succeeded / Failed / CompletedWithWarnings / InProgress / Unknown.
+//          errorDetails.details is long, it is truncated to 400 characters here. 30 day retention.
+let SinceDays = 10d;
+patchinstallationresources
+| where type =~ 'microsoft.compute/virtualmachines/patchinstallationresults'
+| extend startedAt = todatetime(properties.startDateTime),
+         status = tostring(properties.status),
+         vm = tolower(tostring(split(id, '/')[8])),
+         err = tostring(properties.errorDetails.details)
+| where startedAt > ago(SinceDays)
+| where status !~ 'Succeeded'
+| project startedAt, vm, status,
+    startedBy = tostring(properties.startedBy),
+    failed = toint(properties.failedPatchCount),
+    installed = toint(properties.installedPatchCount),
+    maintenanceRunId = tostring(properties.maintenanceRunId),
+    error = substring(err, 0, 400)
+| order by startedAt desc

@@ -1,0 +1,37 @@
+// Title: VM Insights memory usage per VM per month (AvailableMB to used %)
+// Purpose: Monthly average and peak memory use per VM over business hours: used MB, total MB and used percent.
+// Source table(s): InsightsMetrics (Namespace Memory, Name AvailableMB), VMComputer, Heartbeat
+// Parameters to edit: StartTime / EndTime, UtcOffsetHours, business-hours range (9 .. 16).
+// Notes/traps: VM Insights only records AVAILABLE memory (AvailableMB). Used = total - available, where
+//          total comes from the sample tag vm.azm.ms/memorySizeMB, so the "peak used" figure uses the
+//          MINIMUM available value (min of AvailableMB), not the max. Same fixed-offset local-time shift
+//          as the CPU query (no DST handling). Use --timespan covering the window.
+let StartTime = datetime(2026-01-01 00:00:00);
+let EndTime = datetime(2026-04-01 00:00:00);
+let UtcOffsetHours = 1;
+let Inventory = VMComputer
+| where TimeGenerated > ago(30d)
+| summarize arg_max(TimeGenerated, OperatingSystemFullName) by _ResourceId
+| project _ResourceId, FullOSName = OperatingSystemFullName;
+let BackupInventory = Heartbeat
+| where TimeGenerated > ago(30d)
+| summarize arg_max(TimeGenerated, OSName, OSType) by _ResourceId
+| project _ResourceId, SimpleOSName = coalesce(OSName, OSType);
+InsightsMetrics
+| where TimeGenerated between (StartTime .. EndTime)
+| where Name == "AvailableMB"
+| extend LocalTime = datetime_add("hour", UtcOffsetHours, TimeGenerated)
+| where hourofday(LocalTime) between (9 .. 16)
+| extend YearMonth = format_datetime(LocalTime, "yyyy-MM")
+| extend TagsJson = parse_json(Tags)
+| extend TotalMB = todouble(TagsJson["vm.azm.ms/memorySizeMB"])
+| summarize AvgAvailMB_Raw = avg(Val), MinAvailMB_Raw = min(Val), TotalMB = max(TotalMB), Computer = any(Computer) by _ResourceId, YearMonth
+| extend AvgUsedMB = round(TotalMB - AvgAvailMB_Raw, 2), MaxUsedMB = round(TotalMB - MinAvailMB_Raw, 2), AvgAvailableMB = round(AvgAvailMB_Raw, 2)
+| extend AvgUsagePercent = round((AvgUsedMB / TotalMB) * 100, 2), MaxUsagePercent = round((MaxUsedMB / TotalMB) * 100, 2), TotalGB = round(TotalMB / 1024, 2)
+| join kind=leftouter (Inventory) on _ResourceId
+| join kind=leftouter (BackupInventory) on _ResourceId
+| extend RawOS = coalesce(FullOSName, SimpleOSName, "Unknown")
+| extend CleanOS = iff(RawOS contains "Red Hat", "Red Hat Enterprise Linux", RawOS)
+| extend ComputerNameMemory = strcat(Computer, " Memory")
+| project Computer = ComputerNameMemory, YearMonth, AvgUsedMB, MaxUsedMB, TotalMB, AvgAvailableMB, AvgUsagePercent, MaxUsagePercent, TotalGB, OperatingSystem = CleanOS
+| order by Computer asc, YearMonth asc

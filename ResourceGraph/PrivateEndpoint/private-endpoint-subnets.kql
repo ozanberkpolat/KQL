@@ -1,0 +1,27 @@
+// Title: Subnets that hold private endpoints: NSG, route table, network policy, endpoint count
+// Purpose: Check the dedicated private endpoint subnets: is an NSG attached, are network policies
+//          enabled, is a route table attached, how many endpoints sit there.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/virtualnetworks)
+// Parameters to edit: Region (optional), NameHints (subnet name fragments that mark PE subnets).
+// Notes/traps: privateEndpointNetworkPolicies = Enabled / NetworkSecurityGroupEnabled /
+//          RouteTableEnabled controls whether NSG and UDR apply to private endpoint traffic. With the
+//          legacy value Disabled, NSG rules do not filter traffic to the endpoint. A subnet is
+//          included when its name matches OR it already contains endpoints.
+let Region = '';
+let NameHints = dynamic(['pe', 'privateendpoint']);
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| where Region == '' or location =~ Region
+| mv-expand subnet = properties.subnets limit 400
+| extend subnetName = tostring(subnet.name),
+         endpoints = coalesce(array_length(todynamic(subnet.properties.privateEndpoints)), 0)
+| where subnetName has_any (NameHints) or endpoints > 0
+| project subscriptionId, vnet = name, subnetName,
+    prefix = tostring(subnet.properties.addressPrefix),
+    endpoints,
+    networkPolicy = tostring(subnet.properties.privateEndpointNetworkPolicies),
+    nsg = iff(isempty(tostring(subnet.properties.networkSecurityGroup.id)), 'NONE',
+              tostring(split(tostring(subnet.properties.networkSecurityGroup.id), '/')[-1])),
+    routeTable = iff(isempty(tostring(subnet.properties.routeTable.id)), '-',
+                     tostring(split(tostring(subnet.properties.routeTable.id), '/')[-1]))
+| order by vnet asc, subnetName asc

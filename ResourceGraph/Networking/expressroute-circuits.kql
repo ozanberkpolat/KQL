@@ -1,0 +1,15 @@
+// Title: ExpressRoute circuits with provisioning state, bandwidth and SKU
+// Purpose: Check circuit and provider provisioning state and the number of peerings.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/expressroutecircuits)
+// Parameters to edit: none.
+// Notes/traps: a circuit is only usable when circuitProvisioningState is Enabled AND the provider
+//          state is Provisioned.
+resources
+| where type =~ 'microsoft.network/expressroutecircuits'
+| project name, resourceGroup, subscriptionId, id,
+    circuitState = tostring(properties.circuitProvisioningState),
+    providerState = tostring(properties.serviceProviderProvisioningState),
+    provider = tostring(properties.serviceProviderProperties.serviceProviderName),
+    bandwidthMbps = tostring(properties.serviceProviderProperties.bandwidthInMbps),
+    sku = tostring(sku.name),
+    peerings = array_length(properties.peerings)

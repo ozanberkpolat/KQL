@@ -1,0 +1,25 @@
+// Title: FortiGate configuration changes (who changed which policy, address, web filter, SSL setting)
+// Purpose: Audit trail of firewall administration: object path, object id, action, admin user and the changed attributes.
+// Source table(s): Syslog
+// Parameters to edit: FirewallPrefix, Lookback, PathHints (config path fragments to keep).
+// Notes/traps: FortiOS logs attribute changes with log id 0100044547 (the same message type for every
+//          configuration object), verify the id on your FortiOS version. The change detail is in
+//          FTNTFGTcfgattr and can be very long and contain secrets (preshared keys are masked, but
+//          other attributes may not be), so the output is cut to 700 characters. The admin is in suser,
+//          the action in act. VPN portal and unrelated config paths are noisy, narrow with PathHints.
+let FirewallPrefix = "fw-";
+let Lookback = 30d;
+let PathHints = dynamic(["firewall.policy", "firewall.address", "webfilter", "firewall.ssl", "firewall.service"]);
+Syslog
+| where TimeGenerated > ago(Lookback)
+| where Computer startswith FirewallPrefix
+| where SyslogMessage has "FTNTFGTlogid=0100044547"
+| extend path = extract(@"FTNTFGTcfgpath=(\S+)", 1, SyslogMessage),
+         obj = extract(@"FTNTFGTcfgobj=(\S+)", 1, SyslogMessage),
+         attr = substring(extract(@"FTNTFGTcfgattr=(.*)", 1, SyslogMessage), 0, 700),
+         act = extract(@"\bact=(\S+)", 1, SyslogMessage),
+         adminUser = extract(@"\bsuser=(\S+)", 1, SyslogMessage)
+| where path has_any (PathHints)
+| project TimeGenerated, HostName, path, obj, act, adminUser, attr
+| order by TimeGenerated asc
+| take 100

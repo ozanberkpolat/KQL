@@ -1,0 +1,15 @@
+// Title: Heartbeat: latest OS name, OS type and major/minor version per VM
+// Purpose: What OS does each reporting machine run, and when did it last send a heartbeat (stale agents stand out).
+// Source table(s): Heartbeat
+// Parameters to edit: Lookback, StaleAfter.
+// Notes/traps: Heartbeat comes every minute from the agent. A machine missing from the result did not report
+//          in the lookback window, that is a finding (agent stopped or VM off), not "no data".
+//          Grouped by _ResourceId because the Computer name can be duplicated or renamed.
+let Lookback = 30d;
+let StaleAfter = 1h;
+Heartbeat
+| where TimeGenerated > ago(Lookback)
+| summarize arg_max(TimeGenerated, Computer, OSName, OSType, OSMajorVersion, OSMinorVersion) by _ResourceId
+| extend lastSeenAgo = now() - TimeGenerated, stale = (now() - TimeGenerated) > StaleAfter
+| project _ResourceId, Computer, OSName, OSType, OSMajorVersion, OSMinorVersion, lastSeen = TimeGenerated, lastSeenAgo, stale
+| order by stale desc, Computer asc

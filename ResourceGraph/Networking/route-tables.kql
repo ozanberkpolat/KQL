@@ -1,0 +1,16 @@
+// Title: Route tables with every route, next hop and BGP propagation setting
+// Purpose: Audit user-defined routes (UDRs): prefix, next hop type and next hop IP per route table.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/routetables)
+// Parameters to edit: none.
+// Notes/traps: the iff(array_length(...) > 0, routes, dynamic([{}])) trick keeps route tables that have
+//          no routes in the result instead of dropping them in mv-expand.
+resources
+| where type =~ 'microsoft.network/routetables'
+| extend associatedSubnets = coalesce(array_length(properties.subnets), 0),
+         bgpRoutePropagationDisabled = tostring(properties.disableBgpRoutePropagation)
+| mv-expand route = iff(array_length(properties.routes) > 0, properties.routes, dynamic([{}])) limit 400
+| project routeTable = name, resourceGroup, location, associatedSubnets, bgpRoutePropagationDisabled,
+    addressPrefix = tostring(route.properties.addressPrefix),
+    nextHopType = tostring(route.properties.nextHopType),
+    nextHopIp = tostring(route.properties.nextHopIpAddress)
+| order by routeTable asc, addressPrefix asc

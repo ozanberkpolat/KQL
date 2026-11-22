@@ -1,0 +1,16 @@
+// Title: Security incidents roll-up by provider and product (status and ownership)
+// Purpose: How many incidents were created in a period, how many are new / active / closed, and how many have an owner.
+// Source table(s): SecurityIncident (Microsoft Sentinel)
+// Parameters to edit: From, To.
+// Notes/traps: SecurityIncident writes a new row for every incident update. arg_max by IncidentNumber keeps
+//          the latest state of each incident, without it every update counts as a new incident.
+let From = datetime(2026-01-01);
+let To = datetime(2026-02-01);
+SecurityIncident
+| where CreatedTime >= From and CreatedTime < To
+| summarize arg_max(TimeGenerated, *) by IncidentNumber
+| summarize Incidents = count(),
+            New = countif(Status == "New"), Active = countif(Status == "Active"), Closed = countif(Status == "Closed"),
+            Owned = countif(isnotempty(tostring(Owner.assignedTo)))
+    by ProviderName, Product = tostring(AdditionalData.alertProductNames)
+| order by Incidents desc

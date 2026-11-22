@@ -1,0 +1,71 @@
+// Title: Azure network change register (succeeded MICROSOFT.NETWORK write and delete operations)
+// Purpose: Row-level extract of every successful network resource change (NSG rules, routes, VNets, private
+//          endpoints, DNS, gateways, flow logs) with who, from where, in which role, categorised for a
+//          periodic change review.
+// Source table(s): AzureActivity (in the Sentinel / central Log Analytics workspace)
+// Parameters to edit: From (start of review period), SubscriptionNames (subscription id to display name map).
+// Notes/traps: OperationNameValue is UPPER CASE in AzureActivity ("MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/WRITE"),
+//          so the resource type comes out upper case too. TypeMap restores the canonical casing, extend it
+//          when a type shows up unmapped (it then stays upper case in the output). Only Success rows
+//          are counted (a failed write changed nothing). ARM writes a Start/Accept/Success trio per
+//          operation, filtering on Success avoids triple counting. The caller role and principal type
+//          come from Authorization.evidence, which is missing for some system actions. AzureActivity
+//          interactive retention is limited (90 days by default), older periods need a search job whose
+//          result table has the time in _OriginalTimeGenerated instead of TimeGenerated.
+//          Pass --timespan to az monitor log-analytics query, without it you get 0 rows.
+let From = datetime(2026-01-01T00:00:00Z);
+let SubscriptionNames = dynamic({
+  "core-subscription-id": "subs-core",
+  "prod-subscription-id": "subs-prod"
+});
+let TypeMap = dynamic({
+  "PRIVATEDNSZONES":"privateDnsZones",
+  "PRIVATEDNSZONES/VIRTUALNETWORKLINKS":"privateDnsZones/virtualNetworkLinks",
+  "PRIVATEDNSZONES/A":"privateDnsZones/A",
+  "DNSZONES/CNAME":"dnsZones/CNAME",
+  "DNSZONES/TXT":"dnsZones/TXT",
+  "NETWORKWATCHERS/FLOWLOGS":"networkWatchers/flowLogs",
+  "NETWORKSECURITYGROUPS":"networkSecurityGroups",
+  "NETWORKSECURITYGROUPS/SECURITYRULES":"networkSecurityGroups/securityRules",
+  "APPLICATIONGATEWAYWEBAPPLICATIONFIREWALLPOLICIES":"applicationGatewayWebApplicationFirewallPolicies",
+  "SERVICEENDPOINTPOLICIES/SERVICEENDPOINTPOLICYDEFINITIONS":"serviceEndpointPolicies/serviceEndpointPolicyDefinitions",
+  "NETWORKINTERFACES":"networkInterfaces",
+  "APPLICATIONGATEWAYS":"applicationGateways",
+  "PUBLICIPADDRESSES":"publicIPAddresses",
+  "ROUTETABLES":"routeTables",
+  "ROUTETABLES/ROUTES":"routeTables/routes",
+  "VIRTUALNETWORKS":"virtualNetworks",
+  "VIRTUALNETWORKS/SUBNETS":"virtualNetworks/subnets",
+  "VIRTUALNETWORKS/SUBNETS/SERVICEASSOCIATIONLINKS":"virtualNetworks/subnets/serviceAssociationLinks",
+  "VIRTUALNETWORKS/TAGGEDTRAFFICCONSUMERS":"virtualNetworks/taggedTrafficConsumers",
+  "PRIVATEENDPOINTS":"privateEndpoints",
+  "PRIVATEENDPOINTS/PRIVATEDNSZONEGROUPS":"privateEndpoints/privateDnsZoneGroups",
+  "PRIVATEENDPOINTS/PRIVATELINKSERVICEPROXIES":"privateEndpoints/privateLinkServiceProxies"
+});
+AzureActivity
+| where TimeGenerated >= From
+| where OperationNameValue startswith "MICROSOFT.NETWORK/"
+| where ActivityStatusValue == "Success"
+| where OperationNameValue endswith "/WRITE" or OperationNameValue endswith "/DELETE"
+| extend Operation = toupper(tostring(split(OperationNameValue, "/")[-1]))
+| extend RawType = toupper(strcat_array(array_slice(split(OperationNameValue, "/"), 1, -2), "/"))
+| extend MappedType = tostring(TypeMap[RawType])
+| extend ResourceType = iff(isempty(MappedType), RawType, MappedType)
+| extend Family = tostring(split(ResourceType, "/")[0])
+| extend Category = case(
+      Family in ("networkSecurityGroups","applicationGatewayWebApplicationFirewallPolicies","serviceEndpointPolicies"), "Firewall Rules",
+      Family in ("virtualNetworks","routeTables","natGateways","networkManagers"), "Network Architecture",
+      Family in ("privateEndpoints","privateDnsZones","dnsZones","connections","virtualNetworkGateways"), "Connectivity",
+      Family startswith "expressRoute", "Connectivity",
+      Family in ("applicationGateways","loadBalancers","publicIPAddresses","networkInterfaces"), "Network Services",
+      ResourceType == "networkWatchers/flowLogs", "Monitoring / Logging",
+      "Other")
+| extend CallerRole = tostring(parse_json(Authorization).evidence.role)
+| extend PrincipalType = tostring(parse_json(Authorization).evidence.principalType)
+| extend SubscriptionName = coalesce(tostring(SubscriptionNames[tolower(SubscriptionId)]), SubscriptionId)
+| extend ResourceName = tostring(split(_ResourceId, "/")[-1])
+| project DateUTC = format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss"),
+          SubscriptionName, ResourceGroup, ResourceName, ResourceType, Category,
+          Operation, Caller, CallerRole, PrincipalType, CallerIpAddress, CorrelationId,
+          ResourceId = _ResourceId
+| order by DateUTC asc

@@ -1,0 +1,27 @@
+// Title: Key Vault posture inventory (RBAC vs access policies, purge protection, network, private endpoints)
+// Purpose: One row per vault with the settings that matter for a security review.
+//          Complements the azposture checks (https://github.com/ozanberkpolat/azposture).
+// Source table(s): Azure Resource Graph, resources (microsoft.keyvault/vaults)
+// Parameters to edit: none.
+// Notes/traps: enableRbacAuthorization false = access policy model. enablePurgeProtection is null when
+//          never enabled (not "false"), compare with isnull. softDeleteRetentionInDays 7 to 90.
+//          enabledForDeployment / DiskEncryption / TemplateDeployment widen who can read secrets.
+resources
+| where type =~ 'microsoft.keyvault/vaults'
+| project name, resourceGroup, subscriptionId, location,
+    sku = tostring(properties.sku.name),
+    rbac = tostring(properties.enableRbacAuthorization),
+    accessPolicies = array_length(todynamic(properties.accessPolicies)),
+    purgeProtection = tostring(properties.enablePurgeProtection),
+    softDelete = tostring(properties.enableSoftDelete),
+    softDeleteDays = tostring(properties.softDeleteRetentionInDays),
+    publicNetworkAccess = tostring(properties.publicNetworkAccess),
+    networkDefaultAction = tostring(properties.networkAcls.defaultAction),
+    bypass = tostring(properties.networkAcls.bypass),
+    vnetRules = array_length(todynamic(properties.networkAcls.virtualNetworkRules)),
+    ipRules = array_length(todynamic(properties.networkAcls.ipRules)),
+    privateEndpoints = array_length(todynamic(properties.privateEndpointConnections)),
+    enabledForDeployment = tostring(properties.enabledForDeployment),
+    enabledForDiskEncryption = tostring(properties.enabledForDiskEncryption),
+    enabledForTemplateDeployment = tostring(properties.enabledForTemplateDeployment)
+| order by subscriptionId asc, name asc

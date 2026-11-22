@@ -1,0 +1,14 @@
+// Title: Diagnostic settings deleted (who silenced a log source)
+// Purpose: Detect removed diagnostic settings: count and resources, since a point in time.
+// Source table(s): AzureActivity
+// Parameters to edit: Since, Operation.
+// Notes/traps: OperationNameValue is upper case in AzureActivity. Only Success rows. A deleted setting is a
+//          silent log loss: nothing alerts unless you build an alert on this very query.
+//          A diagnostic category cannot be sent to the same workspace by two settings, so a "delete then
+//          recreate" pair is the normal way to move a setting.
+let Since = ago(30d);
+AzureActivity
+| where TimeGenerated > Since
+| where OperationNameValue =~ 'MICROSOFT.INSIGHTS/DIAGNOSTICSETTINGS/DELETE' and ActivityStatusValue == 'Success'
+| summarize deletions = count(), resources = make_set(tostring(split(_ResourceId, '/')[8])), callers = make_set(Caller) by bin(TimeGenerated, 1d)
+| order by TimeGenerated desc

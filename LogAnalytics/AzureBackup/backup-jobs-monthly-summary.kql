@@ -1,0 +1,30 @@
+// Title: Azure Backup job success summary for last month (VM and database jobs)
+// Purpose: Count of backup jobs by category (VM / DB / Other) and status for the previous calendar month.
+//          Database jobs are only counted for items that are still protected, so decommissioned
+//          databases do not pollute the failure numbers.
+// Source table(s): AddonAzureBackupJobs, CoreAzureBackup (resource-specific tables)
+// Parameters to edit: the month window (startOfMonth / endOfMonth), default = previous month.
+// Notes/traps: requires the vault diagnostic setting to send to the workspace in RESOURCE-SPECIFIC mode
+//          (tables AddonAzureBackupJobs / CoreAzureBackup), not AzureDiagnostics. BackupItemUniqueId is
+//          the join key and its casing differs between the tables, so it is lower-cased on both sides.
+//          Category: IaaSVM = VM, SQL / AzureWorkload = DB. A job for an item that is no longer
+//          "Protected" in CoreAzureBackup is dropped for DB jobs (VM jobs are always kept).
+//          Use --timespan P35D or longer with the CLI.
+let startOfMonth = startofmonth(datetime_add('month', -1, now()));
+let endOfMonth = endofmonth(datetime_add('month', -1, now()));
+let CurrentProtectedItems = CoreAzureBackup
+| summarize arg_max(TimeGenerated, BackupItemProtectionState) by JoinKey = tolower(tostring(BackupItemUniqueId))
+| where BackupItemProtectionState == "Protected"
+| project JoinKey, IsCurrentlyProtected = true;
+let Jobs = AddonAzureBackupJobs
+| where TimeGenerated >= startOfMonth and TimeGenerated <= endOfMonth
+| where JobOperation == "Backup"
+| extend Category = case(
+    BackupManagementType contains "IaaSVM", "VM",
+    BackupManagementType contains "SQL" or BackupManagementType contains "AzureWorkload", "DB",
+    "Other")
+| extend JoinKey = tolower(tostring(BackupItemUniqueId))
+| join kind=leftouter (CurrentProtectedItems) on JoinKey
+| where Category == "VM" or (Category == "DB" and IsCurrentlyProtected == true);
+
+Jobs | summarize n = count() by Category, JobStatus

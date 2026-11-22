@@ -1,0 +1,8 @@
+// Title: Disk encryption sets and their Key Vault
+// Purpose: Which Key Vault holds the key of each disk encryption set (customer-managed key chain).
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/diskencryptionsets)
+// Parameters to edit: none.
+// Notes/traps: a Key Vault that is deleted or loses purge protection breaks every disk that uses the set.
+resources
+| where type =~ 'microsoft.compute/diskencryptionsets'
+| project name, resourceGroup, subscriptionId, keyVaultId = tostring(properties.activeKey.sourceVault.id)

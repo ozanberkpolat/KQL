@@ -1,0 +1,26 @@
+// Title: NSG and VNet flow logs with target, version, retention and Traffic Analytics status
+// Purpose: Are flow logs enabled, on what (NSG / VNet / subnet), in which format version, and is
+//          Traffic Analytics switched on and pointing at which workspace.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/networkwatchers/flowlogs)
+// Parameters to edit: none.
+// Notes/traps: the Traffic Analytics settings live under properties.flowAnalyticsConfiguration
+//          .networkWatcherFlowAnalyticsConfiguration. Flow logs are Network Watcher child resources,
+//          so a region without a Network Watcher cannot have them. NSG flow logs are on a retirement
+//          path, new work should target VNet flow logs (targetType virtualNetworks).
+resources
+| where type =~ 'microsoft.network/networkwatchers/flowlogs'
+| extend target = tostring(properties.targetResourceId),
+         ta = properties.flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration
+| extend targetType = case(target contains '/networkSecurityGroups/', 'NSG',
+                           target contains '/virtualNetworks/', 'VNET',
+                           target contains '/subnets/', 'SUBNET', 'OTHER')
+| project name, resourceGroup, subscriptionId, location, targetType,
+    target = tostring(split(target, '/')[-1]),
+    enabled = tostring(properties.enabled),
+    version = tostring(properties.format.version),
+    retentionDays = tostring(properties.retentionPolicy.days),
+    storageAccount = tostring(split(tostring(properties.storageId), '/')[-1]),
+    trafficAnalytics = tostring(ta.enabled),
+    trafficAnalyticsWorkspace = tostring(split(tostring(ta.workspaceResourceId), '/')[-1]),
+    identity = iff(isnull(identity), 'NONE', tostring(identity.type))
+| order by targetType asc, name asc

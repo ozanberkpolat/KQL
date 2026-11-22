@@ -1,0 +1,30 @@
+// Title: Flows to or from an IP / subnet (Traffic Analytics, NTANetAnalytics)
+// Purpose: Who talks to a given host or range, on which ports, and was it allowed or denied, with the
+//          ACL / NSG rule that decided it. The standard query for "which sources use this server before we
+//          close a port / change a rule".
+// Source table(s): NTANetAnalytics
+// Parameters to edit: TargetIps (exact addresses), TargetRange (CIDR, optional), Lookback, Port (0 = any), SourceRange (CIDR, optional).
+// Notes/traps: needs Traffic Analytics enabled with the NTANetAnalytics table (the newer schema, replaces
+//          AzureNetworkAnalytics_CL). Flow counts are in AllowedInFlows / AllowedOutFlows /
+//          DeniedInFlows / DeniedOutFlows, FlowCount is a total. FlowStatus is a string (Allowed /
+//          Denied) and AclRule shows the rule name, tostring() them if summarize complains about
+//          dynamic columns. Flow logs are aggregated (10 or 60 minute processing interval), so results lag.
+//          An empty result is not proof of no traffic: first check ingestion with traffic-analytics-ingestion-health.kql.
+//          Flows are only visible for resources covered by a flow log.
+let TargetIps = dynamic(["192.0.2.10", "192.0.2.11"]);
+let TargetRange = "";    // e.g. "198.51.100.0/27"
+let SourceRange = "";    // e.g. "203.0.113.0/24"
+let Port = 0;
+let Lookback = 30d;
+NTANetAnalytics
+| where TimeGenerated > ago(Lookback)
+| where DestIp in (TargetIps) or (TargetRange != "" and ipv4_is_in_range(DestIp, TargetRange))
+| where SourceRange == "" or ipv4_is_in_range(SrcIp, SourceRange)
+| where Port == 0 or DestPort == Port
+| summarize records = count(),
+            allowedOut = sum(AllowedOutFlows), deniedOut = sum(DeniedOutFlows),
+            allowedIn = sum(AllowedInFlows), deniedIn = sum(DeniedInFlows),
+            firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated),
+            srcVm = make_set(SrcVm, 3), status = make_set(FlowStatus), rules = make_set(AclRule, 5)
+    by SrcIp, DestIp, DestPort, L4Protocol, L7Protocol
+| order by SrcIp asc, DestIp asc, DestPort asc

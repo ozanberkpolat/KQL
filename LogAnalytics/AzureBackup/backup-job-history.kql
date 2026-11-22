@@ -1,0 +1,19 @@
+// Title: Backup job history for items matching a name (duration, status, data transferred)
+// Purpose: Evidence for "did the backup of server X run, how long did it take, did it fail".
+// Source table(s): AddonAzureBackupJobs
+// Parameters to edit: ItemContains (fragment of BackupItemUniqueId), Lookback.
+// Notes/traps: a job writes several rows as its status changes (InProgress, then Completed). arg_max by
+//          JobUniqueId keeps only the final state, without it you count each job more than once.
+//          The data size column is DataTransferredInMB (the variant JobDataTransferredInMB does not exist).
+//          The item name is the LAST segment of BackupItemUniqueId.
+let ItemContains = "vm-app";
+let Lookback = 36d;
+AddonAzureBackupJobs
+| where TimeGenerated > ago(Lookback)
+| where BackupItemUniqueId contains ItemContains
+| extend Item = toupper(tostring(split(BackupItemUniqueId, ";")[-1])),
+         Vault = tostring(split(ResourceId, "/")[-1])
+| summarize arg_max(TimeGenerated, *) by JobUniqueId
+| project Item, Vault, JobOperation, JobStatus, JobFailureCode, AdHocOrScheduledJob,
+          JobStartDateTime, DurationMin = round(JobDurationInSecs / 60, 0), DataTransferredInMB
+| order by Item asc, JobStartDateTime asc

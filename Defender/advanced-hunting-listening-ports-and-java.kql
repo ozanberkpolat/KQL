@@ -1,0 +1,22 @@
+// Title: Listening ports and Java runtimes on selected devices
+// Purpose: Inventory what listens on the network and which Java / Tomcat processes run, for vulnerability triage.
+// Source table(s): DeviceNetworkEvents, DeviceProcessEvents (Advanced Hunting)
+// Parameters to edit: DevicePrefixes, JavaProcesses. Run the two queries one at a time.
+// Notes/traps: ListeningConnectionCreated is logged when a process starts listening, so a long-running
+//          listener that started before the 30 day window is not visible. ProcessCommandLine can hold
+//          secrets (passwords on the command line), treat the output as sensitive.
+//
+// --- Query 1: listening ports per process
+let DevicePrefixes = dynamic(["srv-app", "srv-web"]);
+DeviceNetworkEvents
+| where DeviceName has_any (DevicePrefixes)
+| where ActionType == "ListeningConnectionCreated"
+| summarize Devices = dcount(DeviceName), LastSeen = max(Timestamp) by LocalPort, InitiatingProcessFileName
+| order by Devices desc
+//
+// --- Query 2: Java / Tomcat processes (run separately)
+// DeviceProcessEvents
+// | where DeviceName startswith "srv-app"
+// | where FileName in~ ("java.exe", "javaw.exe", "tomcat9.exe", "tomcat9w.exe")
+// | summarize LastSeen = max(Timestamp), Count = count() by DeviceName, FileName, FolderPath, ProcessCommandLine
+// | order by DeviceName asc

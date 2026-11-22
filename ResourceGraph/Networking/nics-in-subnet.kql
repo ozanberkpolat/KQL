@@ -1,0 +1,16 @@
+// Title: All NICs in one subnet (name fragment) with their VMs and IPs
+// Purpose: What lives in a given subnet: VM, NIC and private IP list.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/networkinterfaces)
+// Parameters to edit: SubnetContains (subnet name fragment).
+// Notes/traps: matches on the subnet resource id text, so a fragment shared by several VNets matches all of them.
+let SubnetContains = 'snet-app';
+resources
+| where type =~ 'microsoft.network/networkinterfaces'
+| mv-expand ipConfig = properties.ipConfigurations limit 400
+| extend subnetId = tostring(ipConfig.properties.subnet.id)
+| where subnetId contains SubnetContains
+| project nic = name, resourceGroup, subscriptionId,
+    ip = tostring(ipConfig.properties.privateIPAddress),
+    vm = tostring(split(tostring(properties.virtualMachine.id), '/')[-1]),
+    subnet = tostring(split(subnetId, '/subnets/')[-1])
+| order by ip asc

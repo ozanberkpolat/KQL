@@ -1,0 +1,16 @@
+// Title: Is a VM (or a group of VMs) reporting to the workspace? Record counts per table
+// Purpose: Quick health check after an agent change, DCR change or restore: which tables receive data from the machine and when.
+// Source table(s): Heartbeat, InsightsMetrics, Perf, Event, Syslog, ConfigurationData (union, fuzzy)
+// Parameters to edit: Names (computer name fragments), Lookback.
+// Notes/traps: union isfuzzy=true makes the query tolerate tables that do not exist in the workspace
+//          (without it a missing table fails the whole query). Heartbeat only proves the agent is alive:
+//          also check InsightsMetrics (VM Insights DCR) and Syslog/Event (log DCR), because a DCR can be
+//          detached while the heartbeat continues. Computer matching is case-sensitive for `has_any`
+//          on some tables, use tolower() on both sides when in doubt.
+let Names = dynamic(["vm-app-01", "vm-db-01"]);
+let Lookback = 3h;
+union withsource=SourceTable isfuzzy=true Heartbeat, InsightsMetrics, Perf, Event, Syslog, ConfigurationData
+| where TimeGenerated > ago(Lookback)
+| where Computer has_any (Names)
+| summarize records = count(), lastRecord = max(TimeGenerated) by SourceTable, Computer
+| order by Computer asc, SourceTable asc

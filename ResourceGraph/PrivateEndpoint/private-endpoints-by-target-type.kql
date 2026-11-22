@@ -1,0 +1,19 @@
+// Title: Private endpoints pointing at one resource type (storage, Key Vault, SQL, ...)
+// Purpose: Which accounts / vaults / servers are reached over private endpoints, and which groupId (blob, file, vault).
+// Source table(s): Azure Resource Graph, resources (microsoft.network/privateendpoints)
+// Parameters to edit: TargetProvider, a provider name fragment such as 'Microsoft.Storage',
+//          'Microsoft.KeyVault', 'Microsoft.Sql', 'Microsoft.Web'.
+// Notes/traps: compare the result with the public-network posture of the target (see Storage/ and
+//          KeyVault-AppService/ queries): a target with a private endpoint but publicNetworkAccess
+//          still Enabled is not isolated.
+let TargetProvider = 'Microsoft.Storage';
+resources
+| where type =~ 'microsoft.network/privateendpoints'
+| mv-expand conn = properties.privateLinkServiceConnections limit 400
+| extend targetId = tostring(conn.properties.privateLinkServiceId)
+| where targetId contains TargetProvider
+| project privateEndpoint = name, resourceGroup, subscriptionId,
+    target = tostring(split(targetId, '/')[8]),
+    groupId = tostring(conn.properties.groupIds[0]),
+    subnet = tostring(properties.subnet.id)
+| order by target asc

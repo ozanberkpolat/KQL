@@ -1,0 +1,28 @@
+// Title: App Control for Business (WDAC) block and audit events in Advanced Hunting
+// Purpose: Find what an App Control policy blocks or would block: which file, folder, signer-less binary or
+//          DLL on which devices, started by which process and account. Use during audit mode rollout of a
+//          supplemental policy.
+// Source table(s): DeviceEvents (ActionType starting with AppControl)
+// Parameters to edit: FileOrFolderHint (software name fragment), Lookback.
+// Notes/traps: ActionType values look like AppControlExecutableAudited / AppControlCodeIntegrityPolicyAudited
+//          (audit mode) and AppControlExecutableBlocked / AppControlCodeIntegrityPolicyBlocked (enforced). Add SHA1 /
+//          SHA256 to the summarize when building allow rules by hash. Shell extension DLLs loaded by
+//          explorer.exe (for example a file transfer tool's context menu DLL) are a common surprise,
+//          search by FolderPath, not only by the exe name.
+//          On the device itself (Windows PowerShell 5.1 for ConfigCI, not pwsh 7):
+//            CiTool -lp                         list active policies (look for your policy GUID)
+//            Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -MaxEvents 30 |
+//                Where-Object Id -eq 3077        3076 = audit event, 3077 = block event
+//            ConvertFrom-CIPolicy -XmlFilePath .\policy.xml -BinaryFilePath "$env:TEMP\check.cip"
+//                                                compile check of a policy XML before deployment
+//            Get-AuthenticodeSignature <file>    signer subject and issuer for a signer rule
+let FileOrFolderHint = "winscp";
+let Lookback = 7d;
+DeviceEvents
+| where Timestamp > ago(Lookback)
+| where ActionType startswith "AppControl"
+| where FileName has FileOrFolderHint or FolderPath has FileOrFolderHint
+    or InitiatingProcessFileName has FileOrFolderHint or InitiatingProcessFolderPath has FileOrFolderHint
+| summarize Count = count(), First = min(Timestamp), Last = max(Timestamp), Processes = make_set(InitiatingProcessFileName, 20)
+    by DeviceName, ActionType, FolderPath, FileName, SHA1, InitiatingProcessAccountName
+| order by Count desc

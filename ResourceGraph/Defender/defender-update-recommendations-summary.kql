@@ -1,0 +1,13 @@
+// Title: "Update <software>" recommendations: unhealthy count per recommendation
+// Purpose: Which third-party software updates (vulnerability assessment findings named "Update ...") hit
+//          the most machines.
+// Source table(s): Azure Resource Graph, securityresources (microsoft.security/assessments)
+// Parameters to edit: Prefix (recommendation name prefix).
+// Notes/traps: for a ranked, CVSS / EPSS based priority list use Defender/update-recommendations-prioritisation.kql.
+let Prefix = 'Update';
+securityresources
+| where type =~ 'microsoft.security/assessments'
+| extend displayName = tostring(properties.displayName), state = tostring(properties.status.code)
+| where displayName startswith Prefix
+| summarize total = count(), unhealthy = countif(state == 'Unhealthy') by displayName
+| order by unhealthy desc
