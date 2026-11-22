@@ -4,7 +4,7 @@
 // Parameters to edit: StartTime / EndTime, UtcOffsetHours, business-hours range (9 .. 16).
 // Notes/traps: UNIT TRAP. The sample tag vm.azm.ms/diskSizeMB is NOT always megabytes: on some mounts the
 //          agent reports a much larger number in other units. An unfixed report showed used percent around
-//          minus 104,857,500 % and went to a customer. The Scale column is the fix: when the raw size is
+//          minus 104,857,500 % in a delivered report. The Scale column is the fix: when the raw size is
 //          above 10,000,000 it is divided by 1024 (Scale = 1024.0), otherwise left alone (Scale = 1.0).
 //          The threshold 10,000,000 "MB" would be a 9.5 TB disk, so a raw value above it is a unit error,
 //          not a real disk. SANITY-CHECK the output: AvgUsedPercent and MaxUsedPercent must be within
