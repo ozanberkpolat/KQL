@@ -1,0 +1,25 @@
+// Title: ASR replicated items: health, state, RPO, failover and test-failover status
+// Purpose: Site Recovery health overview per protected VM with target network, target size and last test failover.
+// Source table(s): Azure Resource Graph, recoveryservicesresources (replication protected items)
+// Parameters to edit: ItemContains (optional name filter).
+// Notes/traps: the lastRpoInSeconds / rpoInSeconds field names differ by replication scenario (Azure to
+//          Azure vs VMware), both are projected. An item that never had a test failover has an empty
+//          lastSuccessfulTestFailoverTime, that is a DR-readiness gap, not a data error.
+let ItemContains = '';
+recoveryservicesresources
+| where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'
+| where ItemContains == '' or tostring(properties.friendlyName) contains ItemContains
+| extend p = properties.providerSpecificDetails
+| project vm = tostring(properties.friendlyName),
+    vault = tostring(split(id, '/')[8]), subscriptionId,
+    replicationHealth = tostring(properties.replicationHealth),
+    protectionState = tostring(properties.protectionState),
+    failoverHealth = tostring(properties.failoverHealth),
+    testFailoverState = tostring(properties.testFailoverState),
+    lastRpoSeconds = tostring(p.lastRpoInSeconds),
+    rpoSeconds = tostring(p.rpoInSeconds),
+    targetVnet = tostring(p.selectedRecoveryAzureNetworkId),
+    targetSize = tostring(p.recoveryAzureVMSize),
+    lastTestFailover = tostring(properties.lastSuccessfulTestFailoverTime),
+    multiVmGroup = tostring(p.multiVmGroupName)
+| order by vm asc

@@ -1,0 +1,13 @@
+// Title: AKS node CPU and memory sizing from Container Insights (average and P95)
+// Purpose: Right-sizing input for an AKS cluster: node-level CPU and memory over two weeks.
+// Source table(s): InsightsMetrics (container.azm.ms/cpu, container.azm.ms/memory)
+// Parameters to edit: Lookback.
+// Notes/traps: Namespace values are container.azm.ms/cpu and container.azm.ms/memory, Computer is the node
+//          name. CPU values are in nanocores and memory in bytes for these namespaces, not percent,
+//          so divide by node capacity before comparing to a limit. P95 is more useful than the average
+//          for sizing.
+let Lookback = 14d;
+InsightsMetrics
+| where Namespace in ("container.azm.ms/cpu", "container.azm.ms/memory")
+| where TimeGenerated > ago(Lookback)
+| summarize avg(Val), p95 = percentile(Val, 95) by Computer, Namespace

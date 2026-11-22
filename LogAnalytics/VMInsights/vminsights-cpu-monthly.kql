@@ -1,0 +1,40 @@
+// Title: VM Insights CPU utilisation per VM per month (business hours)
+// Purpose: Monthly average and maximum CPU % per VM over business hours, with CPU count and OS name,
+//          for a capacity / utilisation report.
+// Source table(s): InsightsMetrics (Namespace Processor, Name UtilizationPercentage), VMComputer, Heartbeat
+// Parameters to edit: StartTime / EndTime (report window), UtcOffsetHours (local time = UTC + offset),
+//          the business-hours range in the hourofday() filter (9 .. 16 = 09:00 to 16:59 local).
+// Notes/traps: InsightsMetrics stores UTC; the +1 hour shift converts to local time BEFORE the business-hours
+//          filter and before the YearMonth bucket, so a sample at 23:30 UTC on the last day lands in the next
+//          month when the offset is positive. The shift is a fixed offset and ignores daylight saving, use
+//          the offset that matches most of the report window. OS name comes from VMComputer
+//          (OperatingSystemFullName) with Heartbeat as fallback. The CPU query joins on _ResourceId without
+//          tolower(), the disk query lower-cases it (see vminsights-disk-monthly.kql): resource id casing
+//          differs between tables, so check the OS column is not all "Unknown".
+//          Run with --timespan covering the whole window, otherwise az returns 0 rows.
+let StartTime = datetime(2026-01-01 00:00:00);
+let EndTime = datetime(2026-04-01 00:00:00);
+let UtcOffsetHours = 1;
+let Inventory = VMComputer
+| where TimeGenerated > ago(30d)
+| summarize arg_max(TimeGenerated, OperatingSystemFullName) by _ResourceId
+| project _ResourceId, FullOSName = OperatingSystemFullName;
+let BackupInventory = Heartbeat
+| where TimeGenerated > ago(30d)
+| summarize arg_max(TimeGenerated, OSName, OSType) by _ResourceId
+| project _ResourceId, SimpleOSName = coalesce(OSName, OSType);
+InsightsMetrics
+| where TimeGenerated between (StartTime .. EndTime)
+| where Name == "UtilizationPercentage"
+| extend LocalTime = datetime_add("hour", UtcOffsetHours, TimeGenerated)
+| where hourofday(LocalTime) between (9 .. 16)
+| extend YearMonth = format_datetime(LocalTime, "yyyy-MM")
+| extend TagsJson = parse_json(Tags)
+| extend TotalCPU = toint(TagsJson["vm.azm.ms/totalCpus"])
+| summarize AvgCPU = avg(Val), MaxCPU = max(Val), TotalCPU = any(TotalCPU), Computer = any(Computer) by _ResourceId, YearMonth
+| join kind=leftouter (Inventory) on _ResourceId
+| join kind=leftouter (BackupInventory) on _ResourceId
+| extend RawOS = coalesce(FullOSName, SimpleOSName, "Unknown")
+| extend CleanOS = iff(RawOS contains "Red Hat", "Red Hat Enterprise Linux", RawOS)
+| project Computer, YearMonth, AvgCPU = round(AvgCPU, 2), MaxCPU = round(MaxCPU, 2), TotalCPU, OperatingSystem = CleanOS
+| order by Computer asc, YearMonth asc

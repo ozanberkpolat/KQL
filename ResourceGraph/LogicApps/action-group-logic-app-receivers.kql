@@ -1,0 +1,22 @@
+// Title: Action groups that call a Logic App, and alert rules wired to them
+// Purpose: Trace the chain alert rule -> action group -> Logic App, to learn what breaks if a Logic App is disabled.
+// Source table(s): Azure Resource Graph, resources (microsoft.insights/actiongroups, alert rule types)
+// Parameters to edit: ActionGroupContains (name fragments of the action groups to follow). Query 2 is separate.
+// Notes/traps: the Logic App receiver target is the workflow resource id in properties.logicAppReceivers.
+//
+// --- Query 1: action groups with Logic App receivers
+resources
+| where type =~ 'microsoft.insights/actiongroups'
+| mv-expand receiver = properties.logicAppReceivers limit 400
+| where isnotempty(receiver)
+| project actionGroup = name, resourceGroup, receiver = tostring(receiver.name), target = tostring(receiver.resourceId)
+//
+// --- Query 2: alert rules that use those action groups (run separately)
+// let ActionGroupContains = dynamic(['ag-logicapp-email', 'ag-logicapp-ticket']);
+// resources
+// | where type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules', 'microsoft.insights/activitylogalerts')
+// | extend actionGroups = coalesce(properties.actions.actionGroups, properties.actions)
+// | mv-expand a = actionGroups limit 400
+// | extend agId = tolower(tostring(a.actionGroupId))
+// | where agId has_any (ActionGroupContains)
+// | project rule = name, type, enabled = tostring(coalesce(properties.enabled, properties.isEnabled)), agId

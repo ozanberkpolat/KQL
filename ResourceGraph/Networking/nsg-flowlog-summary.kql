@@ -1,0 +1,16 @@
+// Title: Flow log counts by target type, enabled state and identity; and by subscription and region
+// Purpose: Coverage summary. Is every region covered, are flow logs enabled, do they carry an identity.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/networkwatchers/flowlogs)
+// Parameters to edit: none.
+// Notes/traps: an empty result means no flow logs at all in the visible subscriptions, treat that as a
+//          finding, not as a clean run. VNet flow logs need a managed identity for storage access
+//          when the storage account is locked down, a migrated flow log without identity shows
+//          identity = NONE here.
+resources
+| where type =~ 'microsoft.network/networkwatchers/flowlogs'
+| summarize flowLogs = count()
+    by targetType = tostring(split(tostring(properties.targetResourceId), '/')[-2]),
+       enabled = tostring(properties.enabled),
+       identity = iff(isnull(identity), 'NONE', tostring(identity.type)),
+       subscriptionId, region = location
+| order by subscriptionId asc, region asc

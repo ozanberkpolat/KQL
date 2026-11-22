@@ -1,0 +1,16 @@
+// Title: Tag coverage per subscription (how many resources carry the required tags)
+// Purpose: Percentage view of tag governance: total resources, with Environment tag, with Criticality tag, with any tag.
+// Source table(s): Azure Resource Graph, resources
+// Parameters to edit: TagA, TagB (the tag keys you require).
+// Notes/traps: tag KEY lookup tags['X'] is case-sensitive in the dynamic bag, 'environment' and
+//          'Environment' are different keys. Resources that do not support tags (some child types) are
+//          counted as untagged. For the full list of untagged resources see the azposture checks.
+let TagA = 'Environment';
+let TagB = 'Criticality';
+resources
+| extend a = tostring(tags[TagA]), b = tostring(tags[TagB])
+| summarize total = count(),
+            withTagA = countif(isnotempty(a)),
+            withTagB = countif(isnotempty(b)),
+            withAnyTag = countif(array_length(bag_keys(tags)) > 0)
+    by subscriptionId

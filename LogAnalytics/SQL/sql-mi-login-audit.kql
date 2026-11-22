@@ -1,0 +1,17 @@
+// Title: SQL Managed Instance login audit (failed or successful logins by principal and client IP)
+// Purpose: Who logs in to a SQL Managed Instance, from where, how often. Set ActionId to LGIF for failed
+//          logins (troubleshooting) or LGIS for successful logins (who uses the instance).
+// Source table(s): AzureDiagnostics (Category SQLSecurityAuditEvents)
+// Parameters to edit: ActionId, Lookback.
+// Notes/traps: needs the managed instance diagnostic setting with SQLSecurityAuditEvents sent to the
+//          workspace (AzureDiagnostics mode). Column names carry type suffixes (action_id_s,
+//          server_principal_name_s, client_ip_s). LGIF = LOGIN FAILED, LGIS = LOGIN SUCCEEDED.
+//          Audit rows can arrive minutes late.
+let ActionId = "LGIF";
+let Lookback = 7d;
+AzureDiagnostics
+| where TimeGenerated > ago(Lookback)
+| where Category == "SQLSecurityAuditEvents" and ResourceType == "MANAGEDINSTANCES" and action_id_s == ActionId
+| summarize n = count(), firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated), ips = make_set(client_ip_s, 10)
+    by Resource, server_principal_name_s
+| order by n desc

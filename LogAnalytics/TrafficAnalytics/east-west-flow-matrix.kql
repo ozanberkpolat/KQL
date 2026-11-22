@@ -1,0 +1,17 @@
+// Title: Allowed and denied flow volume between two sets of prefixes (east-west matrix)
+// Purpose: Evidence for network segmentation: which hosts of zone A talk to which of zone B and on which ports.
+// Source table(s): NTANetAnalytics
+// Parameters to edit: ZoneACidrs, ZoneBCidrs (lists of CIDR ranges), Lookback.
+// Notes/traps: ipv4_is_in_any_range() takes a list of CIDRs. Each flow is reported from both sides, so
+//          flows = AllowedInFlows + AllowedOutFlows counts a conversation up to twice. Treat the numbers
+//          as relative, not exact session counts.
+let ZoneACidrs = dynamic(["198.51.100.0/24", "203.0.113.0/24"]);
+let ZoneBCidrs = dynamic(["192.0.2.0/24"]);
+let Lookback = 30d;
+NTANetAnalytics
+| where TimeGenerated > ago(Lookback)
+| where (ipv4_is_in_any_range(SrcIp, ZoneACidrs) and ipv4_is_in_any_range(DestIp, ZoneBCidrs))
+     or (ipv4_is_in_any_range(SrcIp, ZoneBCidrs) and ipv4_is_in_any_range(DestIp, ZoneACidrs))
+| summarize flows = sum(AllowedInFlows + AllowedOutFlows), denied = sum(DeniedInFlows + DeniedOutFlows)
+    by SrcIp, DestIp, DestPort
+| order by flows desc

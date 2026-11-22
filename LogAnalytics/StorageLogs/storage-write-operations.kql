@@ -1,0 +1,14 @@
+// Title: Who writes to a storage account (create container, put blob, put block, append)
+// Purpose: Find writers: operation counts and first / last seen per authentication type.
+// Source table(s): StorageBlobLogs
+// Parameters to edit: AccountNames, Operations, Lookback.
+// Notes/traps: PutBlock is part of multi-block uploads, PutBlob of single uploads, AppendFile of ADLS Gen2.
+let AccountNames = dynamic(["stappprod001"]);
+let Operations = dynamic(["CreateContainer", "PutBlob", "PutBlock", "AppendFile"]);
+let Lookback = 30d;
+StorageBlobLogs
+| where TimeGenerated > ago(Lookback)
+| where AccountName in (AccountNames)
+| where OperationName in (Operations)
+| summarize Events = count(), First = min(TimeGenerated), Last = max(TimeGenerated) by AccountName, OperationName, AuthenticationType
+| order by Events desc

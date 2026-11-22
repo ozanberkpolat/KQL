@@ -1,0 +1,12 @@
+// Title: Backup item counts per vault, workload type and management type
+// Purpose: How is each vault used: VMs, SQL in VM, files, blobs.
+// Source table(s): Azure Resource Graph, recoveryservicesresources
+// Parameters to edit: none.
+// Notes/traps: the property is dataSourceType with a capital S; the all-lowercase spelling returns blanks.
+recoveryservicesresources
+| where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'
+| summarize items = count()
+    by vault = tostring(split(id, '/')[8]),
+       dataSourceType = tostring(properties.dataSourceType),
+       backupManagementType = tostring(properties.backupManagementType)
+| order by vault asc

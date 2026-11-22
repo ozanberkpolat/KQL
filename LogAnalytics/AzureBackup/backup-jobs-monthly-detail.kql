@@ -1,0 +1,33 @@
+// Title: Azure Backup job detail for last month (one row per job with host and instance)
+// Purpose: The row-level companion of backup-jobs-monthly-summary.kql: evidence list of every backup
+//          job with the real host VM, the protected instance, status and failure code.
+// Source table(s): AddonAzureBackupJobs, CoreAzureBackup
+// Parameters to edit: the month window (startOfMonth / endOfMonth), default = previous month.
+// Notes/traps: BackupItemUniqueId is a semicolon separated string. The last segment is the instance
+//          (VM or database name) and the 5th segment (index 4) is the host VM for database items.
+//          For VM jobs (or when the host is empty) the instance name is used as the host.
+//          Same resource-specific table requirement and --timespan note as the summary query.
+let startOfMonth = startofmonth(datetime_add('month', -1, now()));
+let endOfMonth = endofmonth(datetime_add('month', -1, now()));
+let CurrentProtectedItems = CoreAzureBackup
+| summarize arg_max(TimeGenerated, BackupItemProtectionState) by JoinKey = tolower(tostring(BackupItemUniqueId))
+| where BackupItemProtectionState == "Protected"
+| project JoinKey, IsCurrentlyProtected = true;
+let Jobs = AddonAzureBackupJobs
+| where TimeGenerated >= startOfMonth and TimeGenerated <= endOfMonth
+| where JobOperation == "Backup"
+| extend Category = case(
+    BackupManagementType contains "IaaSVM", "VM",
+    BackupManagementType contains "SQL" or BackupManagementType contains "AzureWorkload", "DB",
+    "Other")
+| extend JoinKey = tolower(tostring(BackupItemUniqueId))
+| join kind=leftouter (CurrentProtectedItems) on JoinKey
+| where Category == "VM" or (Category == "DB" and IsCurrentlyProtected == true);
+
+Jobs
+| extend Parts = split(BackupItemUniqueId, ";")
+| extend InstanceName = tostring(Parts[-1]), HostVM = tostring(Parts[4])
+| extend RealHostVM = iff(Category == "VM" or HostVM == "", InstanceName, HostVM)
+| project TimeGenerated, Category, RealHostVM, InstanceName, JobStatus, JobFailureCode,
+          BackupManagementType
+| order by TimeGenerated desc

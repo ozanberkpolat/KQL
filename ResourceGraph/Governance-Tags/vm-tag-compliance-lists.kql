@@ -1,0 +1,36 @@
+// Title: VM tags versus reality (Backup, ASR, Maintenance): the four lists
+// Purpose: Compare what the VM tags claim with what actually exists. Run the four queries one at a
+//          time, export each to a table and join on the lower-cased VM id client-side:
+//          vms.id = backup.src = asr.src = maint.vm
+// Source table(s): Azure Resource Graph, resources, recoveryservicesresources, maintenanceresources
+// Parameters to edit: none.
+// Notes/traps: ids are lower-cased because ARM casing is inconsistent and a case-sensitive client-side
+//          join would drop rows. The ARG join limit (3) and no support for leftanti/leftsemi joins are
+//          the reason this is done client-side instead of in one query.
+//
+// ---- 1 vms
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| project name, id = tolower(id), subscriptionId, resourceGroup, tags = tostring(tags),
+    power = tostring(properties.extended.instanceView.powerState.code)
+| order by name asc
+//
+// ---- 2 backup (run separately)
+// recoveryservicesresources
+// | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'
+// | where tostring(properties.workloadType) =~ 'VM'
+// | project src = tolower(tostring(properties.sourceResourceId)), state = tostring(properties.protectionState),
+//     policy = tostring(properties.policyName), vault = tostring(split(id, '/')[8])
+//
+// ---- 3 asr (run separately)
+// recoveryservicesresources
+// | where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'
+// | project src = tolower(tostring(properties.providerSpecificDetails.fabricObjectId)),
+//     name = tostring(properties.friendlyName), state = tostring(properties.protectionState),
+//     health = tostring(properties.replicationHealth), vault = tostring(split(id, '/')[8])
+//
+// ---- 4 maintenance (run separately)
+// maintenanceresources
+// | where type =~ 'microsoft.maintenance/configurationassignments'
+// | project vm = tolower(tostring(properties.resourceId)),
+//     config = tostring(split(tostring(properties.maintenanceConfigurationId), '/')[8])

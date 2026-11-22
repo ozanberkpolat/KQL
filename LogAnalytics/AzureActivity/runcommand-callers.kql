@@ -1,0 +1,16 @@
+// Title: Who invoked Run Command on which VM
+// Purpose: Audit of Run Command use: caller, VM, number of calls, first and last call, outcomes.
+// Source table(s): AzureActivity
+// Parameters to edit: Lookback.
+// Notes/traps: a VM can hold at most 25 Run Command resources; old ones must be deleted or new calls are
+//          rejected. OperationNameValue contains runCommand in several spellings (the managed
+//          run command and the legacy action), hence `has`. ActivityStatusValue lists Start / Accept /
+//          Success / Failure per call.
+let Lookback = 1d;
+AzureActivity
+| where TimeGenerated > ago(Lookback)
+| where OperationNameValue has "runCommand"
+| extend vm = tostring(split(_ResourceId, "/")[-1])
+| summarize calls = count(), first = min(TimeGenerated), last = max(TimeGenerated), outcomes = make_set(ActivityStatusValue)
+    by vm, Caller, OperationNameValue
+| order by first asc

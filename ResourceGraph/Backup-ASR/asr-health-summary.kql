@@ -1,0 +1,20 @@
+// Title: ASR replication health summary and test-failover coverage
+// Purpose: Counts per subscription, protection state, replication health, failover health and test
+//          failover state, plus how many items ever had a successful test failover.
+// Source table(s): Azure Resource Graph, recoveryservicesresources
+// Parameters to edit: none. Run the two queries one at a time.
+// Notes/traps: use tostring() inside the by clause, an untyped dynamic group key errors out.
+//
+// --- Query 1: health counts
+recoveryservicesresources
+| where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'
+| summarize items = count() by subscriptionId,
+    protectionState = tostring(properties.protectionState),
+    replicationHealth = tostring(properties.replicationHealth),
+    failoverHealth = tostring(properties.failoverHealth),
+    testFailoverState = tostring(properties.testFailoverState)
+//
+// --- Query 2: test failover coverage (run separately)
+// recoveryservicesresources
+// | where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'
+// | summarize items = count(), tested = countif(isnotempty(tostring(properties.lastSuccessfulTestFailoverTime)))

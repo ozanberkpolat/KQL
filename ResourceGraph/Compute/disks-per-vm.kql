@@ -1,0 +1,15 @@
+// Title: Disk count and total size per VM
+// Purpose: How many managed disks and how many GB does each VM carry (restore sizing, snapshot cost).
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/disks)
+// Parameters to edit: VmNames (leave empty for all VMs).
+// Notes/traps: managedBy is the full VM resource id, the VM name is the 9th path segment ([8]).
+//          Disks without managedBy (unattached) are excluded here on purpose.
+let VmNames = dynamic([]);   // e.g. dynamic(['vm-app-01','vm-db-01']); empty = all
+resources
+| where type =~ 'microsoft.compute/disks'
+| extend vmId = tostring(managedBy)
+| where isnotempty(vmId)
+| extend vmName = tostring(split(vmId, '/')[8])
+| where array_length(VmNames) == 0 or vmName in~ (VmNames)
+| summarize disks = count(), totalGB = sum(toint(properties.diskSizeGB)) by subscriptionId, vmName
+| order by totalGB desc

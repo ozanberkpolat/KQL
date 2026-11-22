@@ -1,0 +1,21 @@
+// Title: Installed software and change history of a VM (ConfigurationChange / ConfigurationData)
+// Purpose: What software was installed or changed on a machine and when (Change Tracking and Inventory).
+// Source table(s): ConfigurationChange, ConfigurationData
+// Parameters to edit: VmName, SoftwareHints (name fragments to focus on, empty = everything).
+// Notes/traps: ConfigurationChange only logs CHANGES, a package that was already there when tracking
+//          started never appears. ConfigurationData holds the current snapshot. The Change Tracking
+//          solution must be enabled for the VM. Second query shows which tables and data types the machine
+//          reports at all.
+let VmName = "vm-app-01";
+let SoftwareHints = dynamic([]);   // e.g. dynamic([".NET", "Visual C++"])
+ConfigurationChange
+| where Computer startswith VmName
+| where ConfigChangeType == "Software"
+| where array_length(SoftwareHints) == 0 or SoftwareName has_any (SoftwareHints)
+| project TimeGenerated, ChangeCategory, SoftwareName, CurrentVersion, Publisher
+| order by TimeGenerated asc
+//
+// --- Query 2: which change tracking data exists for the machine (run separately)
+// union ConfigurationChange, ConfigurationData
+// | where Computer startswith "vm-app-01"
+// | summarize records = count(), first = min(TimeGenerated), last = max(TimeGenerated) by Type, Computer, ConfigDataType, ConfigChangeType

@@ -1,0 +1,34 @@
+// Title: FortiGate forward traffic from Syslog: extract source, destination, port, protocol, action, policy
+// Purpose: Turn raw FortiGate traffic log lines (syslog in CEF-style key=value form) into columns and
+//          summarise sessions per flow. Use it to answer "does the firewall see traffic from A to B, which
+//          policy handled it and was it allowed".
+// Source table(s): Syslog (FortiGate sends through a syslog / CEF forwarder; the CEF connector can alternatively fill CommonSecurityLog)
+// Parameters to edit: SrcNeedle / DstNeedle (text that must appear in the line, exact "src=192.0.2.10 " with the trailing space),
+//          DstList, Lookback, FirewallPrefix (Computer name prefix of the firewall).
+// Notes/traps: the key names are prefixed FTNTFGT (action becomes FTNTFGTaction, policy id
+//          FTNTFGTpolicyid), while src, dst, dpt, proto keep their plain CEF names. When extracting with
+//          regex ALWAYS anchor on a leading space or \b: a bare "src=" also matches inside fields like
+//          "osrc=" or "xsrc=". Put a trailing space in text filters ("src=192.0.2.10 ") or
+//          192.0.2.1 also matches 192.0.2.10 and 192.0.2.100. dpt is the destination port, proto the IP
+//          protocol NUMBER (6 = TCP, 17 = UDP, 1 = ICMP). cat=traffic:forward marks forwarded traffic
+//          (traffic:local is traffic to the firewall itself). Syslog is large, always put a time filter and a
+//          text filter (`has`) BEFORE the extract() calls so the engine can use the index.
+//          Only sessions that are logged appear: a policy without "log traffic" leaves no rows.
+let FirewallPrefix = "fw-";
+let SrcNeedle = "src=192.0.2.10 ";
+let DstList = dynamic([]);      // e.g. dynamic(["198.51.100.10", "198.51.100.11"]); empty = any
+let Lookback = 30d;
+Syslog
+| where TimeGenerated > ago(Lookback)
+| where Computer startswith FirewallPrefix
+| where SyslogMessage has "cat=traffic:forward" and SyslogMessage has SrcNeedle
+| extend src = extract(@" src=(\S+)", 1, SyslogMessage),
+         dst = extract(@" dst=(\S+)", 1, SyslogMessage),
+         dpt = toint(extract(@" dpt=(\d+)", 1, SyslogMessage)),
+         proto = extract(@" proto=(\d+)", 1, SyslogMessage),
+         action = extract(@"FTNTFGTaction=(\S+)", 1, SyslogMessage),
+         policy = extract(@"FTNTFGTpolicyid=(\d+)", 1, SyslogMessage)
+| where array_length(DstList) == 0 or dst in (DstList)
+| summarize hits = count(), firstSeen = min(TimeGenerated), lastSeen = max(TimeGenerated), actions = make_set(action)
+    by src, dst, dpt, proto, policy
+| order by src asc, dst asc, dpt asc

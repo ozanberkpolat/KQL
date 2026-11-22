@@ -1,0 +1,11 @@
+// Title: API connections (Logic Apps) with API name and connection status
+// Purpose: Find broken API connections (Error / Unauthenticated) that make workflows fail.
+// Source table(s): Azure Resource Graph, resources (microsoft.web/connections)
+// Parameters to edit: none.
+// Notes/traps: a connection with status Error usually needs re-authorisation by a person; managed identity
+//          connections avoid the expiring OAuth consent.
+resources
+| where type =~ 'microsoft.web/connections'
+| project name, resourceGroup, subscriptionId,
+    api = tostring(properties.api.name),
+    status = tostring(properties.statuses[0].status)

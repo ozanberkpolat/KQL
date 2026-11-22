@@ -1,0 +1,15 @@
+// Title: VM inventory for reservation coverage (size, power state, priority, region)
+// Purpose: Input for reservation / savings plan sizing: every VM with its size, region and priority (Regular vs Spot).
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachines)
+// Parameters to edit: none. Join with the scale set query (vmss-inventory-for-reservations.kql).
+// Notes/traps: compare reservations by instance size flexibility group (ISF units), not by raw VM
+//          count, a reservation for one size covers a ratio of related sizes. Spot VMs
+//          (priority = Spot) are not covered by reservations. powerState is needed to see which VMs
+//          actually run, a deallocated VM consumes no compute but still shows up here.
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| where isnotempty(tostring(properties.hardwareProfile.vmSize))
+| project id, name, size = tostring(properties.hardwareProfile.vmSize),
+    power = tostring(properties.extended.instanceView.powerState.code),
+    priority = tostring(properties.priority),
+    location, subscriptionId

@@ -1,0 +1,16 @@
+// Title: Fired alerts (Azure Monitor alerts) in the last N hours
+// Purpose: What fired recently, with rule, severity, state and target resource.
+// Source table(s): Azure Resource Graph, alertsmanagementresources
+// Parameters to edit: Hours.
+// Notes/traps: ARG keeps alert instances for a limited time only (about 30 days). Compare datetimes with a
+//          cast: startDateTime is a string property, use todatetime().
+let Hours = 4h;
+alertsmanagementresources
+| where todatetime(properties.essentials.startDateTime) > ago(Hours)
+| project name,
+    rule = tostring(properties.essentials.alertRule),
+    severity = tostring(properties.essentials.severity),
+    state = tostring(properties.essentials.alertState),
+    target = tostring(properties.essentials.targetResourceName),
+    started = tostring(properties.essentials.startDateTime)
+| order by started desc

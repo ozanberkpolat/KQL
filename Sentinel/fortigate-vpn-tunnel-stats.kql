@@ -1,0 +1,24 @@
+// Title: FortiGate IPsec tunnel traffic statistics (bytes in and out per interval)
+// Purpose: Is a site-to-site tunnel carrying traffic, and how much, over time. Quick check during a VPN incident.
+// Source table(s): Syslog
+// Parameters to edit: TunnelName, Lookback.
+// Notes/traps: tunnel-stats messages come at an interval (typically a few minutes), a silent tunnel shows no
+//          rows at all. in= and out= are cumulative counters per tunnel session in bytes, take the
+//          difference between neighbouring rows for a rate, a counter reset means a rekey.
+//          Query 2 shows every log line of a tunnel interface, including down/up events.
+//
+// --- Query 1: tunnel stats
+let TunnelName = "example-tunnel";
+let Lookback = 1d;
+Syslog
+| where TimeGenerated > ago(Lookback)
+| where SyslogMessage has strcat("FTNTFGTvpntunnel=", TunnelName) and SyslogMessage has "tunnel-stats"
+| extend inBytes = extract(@" in=(\d+)", 1, SyslogMessage), outBytes = extract(@" out=(\d+)", 1, SyslogMessage)
+| project TimeGenerated, HostName, inBytes, outBytes
+| order by TimeGenerated desc
+//
+// --- Query 2: everything about the tunnel interface (run separately)
+// Syslog
+// | where TimeGenerated > ago(1d)
+// | where SyslogMessage has "deviceInboundInterface=example-tunnel"
+// | project TimeGenerated, HostName, SyslogMessage

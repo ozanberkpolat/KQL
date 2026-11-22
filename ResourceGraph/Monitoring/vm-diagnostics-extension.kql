@@ -1,0 +1,17 @@
+// Title: VM diagnostics extensions (Windows Azure Diagnostics / Linux Diagnostic) with version and state
+// Purpose: Find VMs still using the legacy diagnostics extension instead of the Azure Monitor Agent.
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachines/extensions)
+// Parameters to edit: none.
+// Notes/traps: the legacy extension Microsoft.Insights.VMDiagnosticsSettings and the legacy Log
+//          Analytics agent (MicrosoftMonitoringAgent / OMSAgentForLinux) are retired, migrate to the
+//          Azure Monitor Agent with data collection rules.
+resources
+| where type =~ 'microsoft.compute/virtualmachines/extensions'
+| where name has 'Diagnostic' or tostring(properties.type) has 'Diagnostic'
+| project vm = tostring(split(id, '/')[8]), extension = name, resourceGroup, subscriptionId,
+    publisher = tostring(properties.publisher),
+    extensionType = tostring(properties.type),
+    version = tostring(properties.typeHandlerVersion),
+    autoUpgrade = tostring(properties.autoUpgradeMinorVersion),
+    provisioningState = tostring(properties.provisioningState)
+| order by vm asc

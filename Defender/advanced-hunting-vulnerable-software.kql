@@ -1,0 +1,26 @@
+// Title: Vulnerable software on devices (Defender Vulnerability Management): summary and per device
+// Purpose: Which software on managed devices carries the most CVEs, critical CVEs and CVEs with a public exploit.
+// Source table(s): DeviceTvmSoftwareVulnerabilities, DeviceTvmSoftwareVulnerabilitiesKB (Advanced Hunting)
+// Parameters to edit: OsPlatforms.
+// Notes/traps: run in the Defender portal, Advanced hunting (these tables are NOT in Log Analytics unless you
+//          stream them). IsExploitAvailable comes from the KB table, hence the join. The join is
+//          leftouter so software without KB match is kept. Query 2 gives the per device view.
+//
+// --- Query 1: per software
+let OsPlatforms = dynamic(["Windows10", "Windows11"]);
+DeviceTvmSoftwareVulnerabilities
+| where OSPlatform in (OsPlatforms)
+| join kind=leftouter (DeviceTvmSoftwareVulnerabilitiesKB | project CveId, CvssScore, IsExploitAvailable) on CveId
+| summarize Devices = dcount(DeviceId), CVEs = dcount(CveId),
+            CriticalCVEs = dcountif(CveId, VulnerabilitySeverityLevel == "Critical"),
+            ExploitCVEs = dcountif(CveId, IsExploitAvailable == true),
+            Versions = make_set(SoftwareVersion, 15)
+    by SoftwareVendor, SoftwareName
+| order by ExploitCVEs desc, Devices desc
+//
+// --- Query 2: per device and software version (run separately)
+// DeviceTvmSoftwareVulnerabilities
+// | where OSPlatform in ("Windows10", "Windows11")
+// | summarize CVEs = dcount(CveId), CriticalCVEs = dcountif(CveId, VulnerabilitySeverityLevel == "Critical")
+//     by DeviceName, OSPlatform, SoftwareVendor, SoftwareName, SoftwareVersion
+// | order by DeviceName asc, CriticalCVEs desc

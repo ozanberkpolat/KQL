@@ -1,0 +1,15 @@
+// Title: Changes to Log Analytics tables and workspaces (retention, plan, search jobs)
+// Purpose: Who changed table retention, table plan or the workspace itself.
+// Source table(s): AzureActivity
+// Parameters to edit: Lookback.
+// Notes/traps: interactive retention of AzureActivity in a workspace is limited (90 days by default). Look
+//          back further with a search job, which creates a *_SRCH table: search result tables use the
+//          column _OriginalTimeGenerated for the ORIGINAL event time, TimeGenerated is the time the search
+//          job wrote the row. To list tables and their retention from the CLI: az monitor log-analytics
+//          workspace table list (resource group and workspace name required).
+let Lookback = 120d;
+AzureActivity
+| where TimeGenerated > ago(Lookback)
+| where OperationNameValue in~ ("MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES/TABLES/WRITE", "MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES/WRITE")
+| project TimeGenerated, Caller, OperationNameValue, ActivityStatusValue, ResourceId
+| order by TimeGenerated asc

@@ -1,0 +1,18 @@
+// Title: VM patch mode and assessment mode (Linux and Windows)
+// Purpose: Which VMs use AutomaticByPlatform / ImageDefault / Manual patching, and periodic assessment on/off.
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachines)
+// Parameters to edit: OsType ('Linux', 'Windows' or empty).
+// Notes/traps: Update Manager schedules only apply to VMs with patchMode AutomaticByPlatform
+//          (plus bypassPlatformSafetyChecksOnUserSchedule for customer schedules). The setting lives
+//          under linuxConfiguration or windowsConfiguration, hence the coalesce.
+let OsType = '';
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| extend osType = tostring(properties.storageProfile.osDisk.osType),
+         patchMode = coalesce(tostring(properties.osProfile.linuxConfiguration.patchSettings.patchMode),
+                              tostring(properties.osProfile.windowsConfiguration.patchSettings.patchMode)),
+         assessmentMode = coalesce(tostring(properties.osProfile.linuxConfiguration.patchSettings.assessmentMode),
+                                   tostring(properties.osProfile.windowsConfiguration.patchSettings.assessmentMode))
+| where OsType == '' or osType =~ OsType
+| project name, resourceGroup, osType, patchMode, assessmentMode,
+    maintenanceConfigurationTag = tostring(tags.MaintenanceConfiguration)

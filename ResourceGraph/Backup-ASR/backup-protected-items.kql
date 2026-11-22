@@ -1,0 +1,23 @@
+// Title: Azure Backup protected items with state, policy and last backup result
+// Purpose: What is protected, by which vault and policy, and did the last backup work.
+// Source table(s): Azure Resource Graph, recoveryservicesresources (backup protected items)
+// Parameters to edit: ItemContains (friendly-name / source id fragment; empty = everything), WorkloadType.
+// Notes/traps: the type string for backup items and for ASR replicated items is different, do not mix them.
+//          protectionState "Protected" can still hide a failing last backup, always show lastBackupStatus.
+//          properties.datasourceType vs dataSourceType: both spellings appear in older queries, use
+//          workloadType (VM, AzureSqlDb, ...) for filtering.
+let ItemContains = '';    // e.g. 'sql' or a VM name
+let WorkloadType = '';    // e.g. 'VM'; empty = all
+recoveryservicesresources
+| where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'
+| where ItemContains == '' or tostring(properties.friendlyName) contains ItemContains or tostring(properties.sourceResourceId) contains ItemContains
+| where WorkloadType == '' or tostring(properties.workloadType) =~ WorkloadType
+| project item = tostring(properties.friendlyName),
+    vault = tostring(split(id, '/')[8]), subscriptionId,
+    workloadType = tostring(properties.workloadType),
+    protectionState = tostring(properties.protectionState),
+    healthStatus = tostring(properties.healthStatus),
+    policy = tostring(properties.policyName),
+    lastBackupStatus = tostring(properties.lastBackupStatus),
+    lastBackupTime = todatetime(properties.lastBackupTime)
+| order by vault asc, item asc

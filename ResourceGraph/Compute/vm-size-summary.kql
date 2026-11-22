@@ -1,0 +1,10 @@
+// Title: VM count per size
+// Purpose: Quick view of how the VM estate is spread over sizes (right-sizing and reservation planning).
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachines)
+// Parameters to edit: none.
+// Notes/traps: counts all VMs including deallocated ones. For running-only inventory used for
+//          reservations see ResourceGraph/Cost/vm-running-inventory-for-reservations.kql.
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| summarize vms = count() by vmSize = tostring(properties.hardwareProfile.vmSize)
+| order by vms desc

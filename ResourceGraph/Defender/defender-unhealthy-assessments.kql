@@ -1,0 +1,20 @@
+// Title: Unhealthy Defender for Cloud assessments filtered by display name
+// Purpose: List resources failing a specific recommendation (log4j, shared key access, a named software update, ...).
+// Source table(s): Azure Resource Graph, securityresources (microsoft.security/assessments)
+// Parameters to edit: NameContains (fragment of the recommendation display name), State ('Unhealthy','Healthy','NotApplicable').
+// Notes/traps: the resource is in properties.resourceDetails.Id (capital I and d), the VM name is the 9th
+//          segment of the assessment id. additionalData differs per recommendation, project the fields you
+//          need after looking at one row (e.g. `| limit 1`). Assessments refresh about every 24 hours, a
+//          fix shows up the next day.
+let NameContains = 'shared key';
+let State = 'Unhealthy';
+securityresources
+| where type =~ 'microsoft.security/assessments'
+| extend displayName = tostring(properties.displayName), state = tostring(properties.status.code)
+| where state == State and displayName has NameContains
+| project displayName, state,
+    resource = tostring(properties.resourceDetails.Id),
+    assessmentType = tostring(properties.metadata.assessmentType),
+    severity = tostring(properties.metadata.severity),
+    subscriptionId
+| order by resource asc

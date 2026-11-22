@@ -1,0 +1,17 @@
+// Title: Disk paths of a software package on each device (OpenSSL, log4j, any library)
+// Purpose: Show WHERE a vulnerable library lives, to tell an active installation from a leftover copy
+//          (installer folders, backup directories, old versions). Only the path shows if it is on a live classpath.
+// Source table(s): DeviceTvmSoftwareEvidenceBeta, DeviceInfo (Advanced Hunting)
+// Parameters to edit: SoftwareHint (name fragment, e.g. "log4j", "openssl").
+// Notes/traps: DiskPaths is an array, mv-expand it, one row per path. DeviceName is not in the evidence
+//          table, join DeviceInfo (arg_max by DeviceId gives the latest name). Use kind=inner to drop
+//          devices that DeviceInfo no longer knows. Vendor product directories hold bundled copies that
+//          must not be edited by hand (support loss), the clean fix is a vendor upgrade, but orphan copies
+//          outside the classpath can simply be deleted.
+let SoftwareHint = "log4j";
+DeviceTvmSoftwareEvidenceBeta
+| where SoftwareName has SoftwareHint
+| mv-expand DiskPaths
+| join kind=inner (DeviceInfo | summarize arg_max(Timestamp, DeviceName) by DeviceId) on DeviceId
+| project DeviceName, SoftwareName, SoftwareVersion, DiskPath = tostring(DiskPaths)
+| order by DeviceName asc

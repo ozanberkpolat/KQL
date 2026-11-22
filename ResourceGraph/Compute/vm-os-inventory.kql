@@ -1,0 +1,20 @@
+// Title: VM OS name and version from the instance view
+// Purpose: Which OS (and OS version) is each VM really running, next to the image it was built from.
+//          Useful as the input of an OS support-lifecycle report.
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachines)
+// Parameters to edit: none.
+// Notes/traps: osName / osVersion are guest-reported through the VM agent, so they are empty for
+//          stopped VMs that never reported or VMs without a working agent. Fall back to the image
+//          columns, or to the Heartbeat query in LogAnalytics/Heartbeat/heartbeat-last-seen-os.kql.
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| project name, id, subscriptionId, resourceGroup,
+    powerState = tostring(properties.extended.instanceView.powerState.code),
+    osType = tostring(properties.storageProfile.osDisk.osType),
+    imagePublisher = tostring(properties.storageProfile.imageReference.publisher),
+    imageOffer = tostring(properties.storageProfile.imageReference.offer),
+    imageSku = tostring(properties.storageProfile.imageReference.sku),
+    osName = tostring(properties.extended.instanceView.osName),
+    osVersion = tostring(properties.extended.instanceView.osVersion),
+    timeCreated = tostring(properties.timeCreated)
+| order by name asc

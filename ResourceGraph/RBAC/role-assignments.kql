@@ -1,0 +1,19 @@
+// Title: Role assignments for a principal or on a scope
+// Purpose: Who has what on which scope. Look up a principal (object id) or everything on a resource.
+// Source table(s): Azure Resource Graph, authorizationresources (microsoft.authorization/roleassignments)
+// Parameters to edit: PrincipalId (object id GUID; set '' to skip), ScopeContains (fragment of the scope or empty).
+// Notes/traps: roleDefinitionId is a full resource id, the last segment is the role definition GUID. Resolve
+//          the GUID to a name with ResourceGraph/RBAC/role-definition-names.kql. Only assignments are shown,
+//          not PIM-eligible ones (eligible assignments are not role assignments yet). principalType tells
+//          User / Group / ServicePrincipal. Remove the where line to dump every assignment.
+let PrincipalId = 'principal-object-id';   // object id of the user, group or service principal; empty string disables this filter
+let ScopeContains = '';   // e.g. a storage account name or resource group name
+authorizationresources
+| where type =~ 'microsoft.authorization/roleassignments'
+| where (PrincipalId != '' and tostring(properties.principalId) == PrincipalId) or (ScopeContains != '' and tostring(properties.scope) contains ScopeContains)
+| project scope = tostring(properties.scope),
+    principalId = tostring(properties.principalId),
+    principalType = tostring(properties.principalType),
+    roleDefinitionGuid = tostring(split(tostring(properties.roleDefinitionId), '/')[-1]),
+    createdOn = tostring(properties.createdOn)
+| order by scope asc

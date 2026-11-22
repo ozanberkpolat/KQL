@@ -1,0 +1,48 @@
+// Title: Microsoft Defender for Endpoint coverage per VM (extension, EDR and antivirus assessments)
+// Purpose: For every VM: is the MDE extension installed, is the EDR assessment healthy, are the three
+//          antivirus checks (enabled, signatures, scans) healthy. Then bucket the VMs into a status category.
+// Source table(s): Azure Resource Graph, resources (VMs, extensions), securityresources (assessments)
+// Parameters to edit: none. The four 8-character prefixes below are the built-in Defender for Cloud
+//          assessment keys, they are the same in every tenant:
+//          06e3a6db = EDR solution check, 506d18a1 = antivirus enabled check,
+//          aafa7d27 = antivirus signatures check, d44de051 = antivirus scans check.
+//          Verify them once against your tenant (query one assessment of each by displayName) before relying on the buckets.
+// Notes/traps: assessments are matched by the first 8 characters of the assessment name (a GUID).
+//          Powered-off VMs are not assessed and land in the last category. Vendor appliance images
+//          (firewalls, NACs) cannot take the MDE extension, list their image publishers in VendorPublishers.
+//          Uses two joins; Resource Graph allows three per query.
+let VendorPublishers = dynamic(['fortinet', 'cisco', 'forescout']);
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| extend vmid = tolower(id)
+| extend hostName = toupper(tostring(properties.extended.instanceView.computerName)),
+         osType = tostring(properties.storageProfile.osDisk.osType),
+         publisher = tostring(properties.storageProfile.imageReference.publisher),
+         offer = tostring(properties.storageProfile.imageReference.offer),
+         powerState = replace('PowerState/', '', tostring(properties.extended.instanceView.powerState.code))
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.compute/virtualmachines/extensions' and name in~ ('MDE.Windows', 'MDE.Linux')
+    | project vmid = tolower(tostring(split(id, '/extensions/')[0])), mdeExtension = name, mdeState = tostring(properties.provisioningState)
+  ) on vmid
+| join kind=leftouter (
+    securityresources
+    | where type == 'microsoft.security/assessments'
+    | where name startswith '06e3a6db' or name startswith '506d18a1' or name startswith 'aafa7d27' or name startswith 'd44de051'
+    | extend vmid = tolower(tostring(properties.resourceDetails.Id)), k = substring(name, 0, 8),
+             st = tostring(properties.status.code), cs = tostring(properties.status.cause)
+    | summarize edr = anyif(st, k == '06e3a6db'), edrCause = anyif(cs, k == '06e3a6db'),
+                avOn = anyif(st, k == '506d18a1'), avSignatures = anyif(st, k == 'aafa7d27'),
+                avScans = anyif(st, k == 'd44de051') by vmid
+  ) on vmid
+| extend category = case(
+    powerState != 'running', '7 Not running at extraction; not assessed',
+    isempty(mdeExtension) and publisher in~ (VendorPublishers), '6 Vendor appliance image; no MDE extension',
+    isempty(mdeExtension), '5 No MDE extension; EDR assessment not completed',
+    edr != 'Healthy', '4 MDE installed; EDR assessment not completed',
+    isempty(avOn) and isempty(avSignatures) and isempty(avScans), '3 MDE installed; EDR healthy; antivirus checks not reported',
+    avOn == 'Healthy' and avSignatures == 'Healthy' and avScans == 'Healthy', '1 MDE installed; EDR and all three antivirus checks healthy',
+    '2 MDE installed; EDR healthy; one or more antivirus checks unhealthy')
+| project vm = name, hostName, subscriptionId, osType, publisher, offer, powerState,
+    mdeExtension, mdeState, edr, edrCause, avOn, avSignatures, avScans, category
+| order by category asc, vm asc

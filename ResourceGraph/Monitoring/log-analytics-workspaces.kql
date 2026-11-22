@@ -1,0 +1,11 @@
+// Title: Log Analytics workspaces visible to the sign-in (name, RG, subscription, workspace id)
+// Purpose: Find the workspace GUID (customerId) that az monitor log-analytics query -w and the query API need.
+// Source table(s): Azure Resource Graph, resources (microsoft.operationalinsights/workspaces)
+// Parameters to edit: none.
+// Notes/traps: properties.customerId IS the workspace GUID for queries. It is not the same as the ARM
+//          resource id or the subscription id.
+resources
+| where type =~ 'microsoft.operationalinsights/workspaces'
+| project name, resourceGroup, subscriptionId, workspaceId = tostring(properties.customerId),
+    retentionDays = tostring(properties.retentionInDays), sku = tostring(properties.sku.name)
+| order by name asc

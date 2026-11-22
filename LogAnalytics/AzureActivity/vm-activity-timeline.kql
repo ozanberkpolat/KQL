@@ -1,0 +1,14 @@
+// Title: Activity log timeline of one VM
+// Purpose: What happened to a VM in the last hours: restart, resize, run command, patch, who did it.
+// Source table(s): AzureActivity
+// Parameters to edit: VmName (lower case fragment of the resource id), Lookback.
+// Notes/traps: _ResourceId is upper case in some rows, lower-case your input and compare with tolower().
+//          Filter to the lifecycle statuses to avoid noise from "Updated" events.
+let VmName = "vm-app-01";
+let Lookback = 2h;
+AzureActivity
+| where TimeGenerated > ago(Lookback)
+| where tolower(_ResourceId) has tolower(VmName)
+| where ActivityStatusValue in ("Start", "Success", "Failure", "Accept")
+| project TimeGenerated, Caller, OperationNameValue, ActivityStatusValue
+| order by TimeGenerated asc

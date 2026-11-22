@@ -1,0 +1,13 @@
+// Title: Recovery Services vault settings (public access, private endpoints, redundancy, immutability)
+// Purpose: Security and resilience posture of every vault.
+// Source table(s): Azure Resource Graph, resources (microsoft.recoveryservices/vaults)
+// Parameters to edit: none.
+// Notes/traps: immutability state values are Disabled / Unlocked / Locked. Locked cannot be reverted.
+//          A vault with standardTierStorageRedundancy = LocallyRedundant cannot survive a datacentre loss.
+resources
+| where type =~ 'microsoft.recoveryservices/vaults'
+| project name, resourceGroup, subscriptionId,
+    publicNetworkAccess = tostring(properties.publicNetworkAccess),
+    privateEndpointConnections = array_length(todynamic(properties.privateEndpointConnections)),
+    redundancy = tostring(properties.redundancySettings.standardTierStorageRedundancy),
+    immutability = tostring(properties.securitySettings.immutabilitySettings.state)

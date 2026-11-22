@@ -1,0 +1,25 @@
+// Title: VM security profile summary (security type, encryption at host, Secure Boot, vTPM)
+// Purpose: How many VMs run Standard vs Trusted Launch / Confidential, with encryption at host,
+//          Secure Boot and vTPM combinations. Then list the VMs of one image publisher.
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachines)
+// Parameters to edit: ImagePublisher for the detail query (second query, run it separately).
+// Notes/traps: securityType is empty (not "Standard") for VMs created without a security profile.
+//          Run the two queries one at a time, Resource Graph accepts a single query per call.
+//
+// --- Query 1: summary
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| extend securityType = tostring(properties.securityProfile.securityType),
+         encryptionAtHost = tostring(properties.securityProfile.encryptionAtHost),
+         vTpm = tostring(properties.securityProfile.uefiSettings.vTpmEnabled),
+         secureBoot = tostring(properties.securityProfile.uefiSettings.secureBootEnabled)
+| summarize vms = count() by securityType, encryptionAtHost, secureBoot, vTpm
+//
+// --- Query 2: VMs of one image publisher (uncomment let, run alone)
+// let ImagePublisher = 'RedHat';
+// resources
+// | where type =~ 'microsoft.compute/virtualmachines'
+// | where tostring(properties.storageProfile.imageReference.publisher) =~ ImagePublisher
+// | project name, sku = tostring(properties.storageProfile.imageReference.sku),
+//     securityType = tostring(properties.securityProfile.securityType),
+//     encryptionAtHost = tostring(properties.securityProfile.encryptionAtHost)

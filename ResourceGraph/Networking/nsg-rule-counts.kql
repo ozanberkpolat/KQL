@@ -1,0 +1,18 @@
+// Title: NSGs with attachment counts and allow/deny rule counts per direction
+// Purpose: Spot NSGs attached to nothing, and NSGs whose rule mix looks wrong (many inbound allows).
+// Source table(s): Azure Resource Graph, resources (microsoft.network/networksecuritygroups)
+// Parameters to edit: none.
+// Notes/traps: counts custom securityRules only, not the default rules. countif() works in native
+//          Resource Graph, but not in Log Analytics cross-queries through arg("").
+resources
+| where type =~ 'microsoft.network/networksecuritygroups'
+| extend associatedSubnets = coalesce(array_length(properties.subnets), 0),
+         associatedNics = coalesce(array_length(properties.networkInterfaces), 0)
+| mv-expand rule = iff(array_length(properties.securityRules) > 0, properties.securityRules, dynamic([{}])) limit 400
+| extend direction = tostring(rule.properties.direction), access = tostring(rule.properties.access)
+| summarize inboundAllow = countif(direction == 'Inbound' and access == 'Allow'),
+            inboundDeny = countif(direction == 'Inbound' and access == 'Deny'),
+            outboundAllow = countif(direction == 'Outbound' and access == 'Allow'),
+            outboundDeny = countif(direction == 'Outbound' and access == 'Deny')
+    by nsg = name, location, associatedSubnets, associatedNics
+| order by nsg asc

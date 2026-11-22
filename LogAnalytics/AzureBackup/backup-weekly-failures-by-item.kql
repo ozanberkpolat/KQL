@@ -1,0 +1,16 @@
+// Title: Weekly backup job counts and failures per protected item
+// Purpose: Trend of failed / cancelled / warning jobs per item and week.
+// Source table(s): AddonAzureBackupJobs
+// Parameters to edit: ItemContains, Lookback.
+// Notes/traps: arg_max by JobUniqueId first (one row per job), otherwise status transitions inflate the counts.
+let ItemContains = "vm-app";
+let Lookback = 60d;
+AddonAzureBackupJobs
+| where TimeGenerated > ago(Lookback)
+| where BackupItemUniqueId contains ItemContains
+| summarize arg_max(TimeGenerated, *) by JobUniqueId
+| extend Item = tostring(split(BackupItemUniqueId, ";")[-1])
+| summarize Jobs = count(),
+            FailedOrCancelled = countif(JobStatus in ("Failed", "Cancelled", "CompletedWithWarnings"))
+    by Item, Week = startofweek(JobStartDateTime)
+| order by Item, Week asc

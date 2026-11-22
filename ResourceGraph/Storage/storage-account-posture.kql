@@ -1,0 +1,30 @@
+// Title: Storage account posture inventory (shared key, public network, TLS, HTTPS, replication, private endpoints)
+// Purpose: One row per storage account with the settings that matter for a network / identity hardening review.
+//          Complements the azposture checks (https://github.com/ozanberkpolat/azposture), which flag
+//          individual findings, while this is the full inventory.
+// Source table(s): Azure Resource Graph, resources (microsoft.storage/storageaccounts)
+// Parameters to edit: none.
+// Notes/traps: properties.allowSharedKeyAccess is NULL when never set and a null means shared key access
+//          is ALLOWED (implicit default). Testing only "== true" silently misses those accounts, which
+//          is why askState has three values. Keep the case(isnull(...)) branch first.
+//          Match the type with =~ (case-insensitive), the real casing is microsoft.storage/storageAccounts.
+resources
+| where type =~ 'microsoft.storage/storageaccounts'
+| extend ask = properties.allowSharedKeyAccess
+| extend sharedKeyState = case(isnull(ask), 'null-implicit-allow', tostring(ask) =~ 'true', 'explicit-allow', 'disabled')
+| project name, resourceGroup, subscriptionId, location, kind, sku = tostring(sku.name),
+    sharedKeyState,
+    allowBlobPublicAccess = tostring(properties.allowBlobPublicAccess),
+    publicNetworkAccess = tostring(properties.publicNetworkAccess),
+    defaultAction = tostring(properties.networkAcls.defaultAction),
+    bypass = tostring(properties.networkAcls.bypass),
+    vnetRules = array_length(todynamic(properties.networkAcls.virtualNetworkRules)),
+    ipRules = array_length(todynamic(properties.networkAcls.ipRules)),
+    privateEndpoints = array_length(properties.privateEndpointConnections),
+    minTls = tostring(properties.minimumTlsVersion),
+    httpsOnly = tostring(properties.supportsHttpsTrafficOnly),
+    crossTenantReplication = tostring(properties.allowCrossTenantReplication),
+    hierarchicalNamespace = tostring(properties.isHnsEnabled),
+    filesIdentityAuth = tostring(properties.azureFilesIdentityBasedAuthentication.directoryServiceOptions),
+    id
+| order by sharedKeyState asc, name asc

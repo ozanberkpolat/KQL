@@ -1,0 +1,46 @@
+// Title: Machine Configuration (guest configuration) compliance per configuration and per VM
+// Purpose: Which guest configurations are assigned, how many VMs are compliant, non-compliant or pending.
+// Source table(s): Azure Resource Graph, guestconfigurationresources
+// Parameters to edit: Query 2 groups per VM instead of per configuration. Query 3 lists failed rules for one baseline.
+// Notes/traps: complianceStatus is Compliant / NonCompliant / Pending. lastComplianceStatusChecked shows
+//          staleness, an old date means the machine stopped reporting. Per-rule detail is in
+//          properties.latestAssignmentReport.resources[], one row per rule after mv-expand.
+//
+// --- Query 1: per configuration
+guestconfigurationresources
+| where type =~ 'microsoft.guestconfiguration/guestconfigurationassignments'
+| extend cfg = tostring(properties.guestConfiguration.name),
+         cs = tostring(properties.complianceStatus),
+         checked = todatetime(properties.lastComplianceStatusChecked)
+| summarize assignments = count(),
+            compliant = countif(cs == 'Compliant'),
+            nonCompliant = countif(cs == 'NonCompliant'),
+            pending = countif(cs !in ('Compliant', 'NonCompliant')),
+            oldestCheck = min(checked), newestCheck = max(checked)
+    by cfg
+| order by cfg asc
+//
+// --- Query 2: per VM (run separately)
+// guestconfigurationresources
+// | where type =~ 'microsoft.guestconfiguration/guestconfigurationassignments'
+// | extend vm = tolower(tostring(split(id, '/')[8])),
+//          cfg = tostring(properties.guestConfiguration.name),
+//          state = tostring(properties.complianceStatus),
+//          checked = todatetime(properties.lastComplianceStatusChecked)
+// | summarize configurations = dcount(cfg),
+//             compliant = dcountif(cfg, state == 'Compliant'),
+//             nonCompliant = dcountif(cfg, state == 'NonCompliant'),
+//             nonCompliantConfigs = strcat_array(make_set_if(cfg, state == 'NonCompliant'), '; '),
+//             lastEvaluation = max(checked)
+//     by vm, subscriptionId
+//
+// --- Query 3: failed rules of one baseline (run separately)
+// let Baselines = dynamic(['AzureWindowsBaseline', 'AzureLinuxBaseline']);
+// guestconfigurationresources
+// | where type =~ 'microsoft.guestconfiguration/guestconfigurationassignments' and name in~ (Baselines)
+// | extend vm = tolower(tostring(split(id, '/')[8])), rules = properties.latestAssignmentReport.resources
+// | mv-expand r = rules limit 2000
+// | project assignment = name, vm, rule = tostring(r.resourceId),
+//     status = iff(tostring(r.complianceStatus) == 'true', 'Compliant', 'NonCompliant'),
+//     reason = tostring(r.reasons[0].phrase)
+// | where status == 'NonCompliant'

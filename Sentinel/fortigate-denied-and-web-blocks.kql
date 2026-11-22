@@ -1,0 +1,39 @@
+// Title: FortiGate blocked traffic and web filter blocks from a source range
+// Purpose: Why does a client lose access: which policy, UTM profile, web category and host name blocked it.
+// Source table(s): Syslog
+// Parameters to edit: FirewallPrefix, SrcRange (CIDR), Lookback. Query 2 is the web-filter view.
+// Notes/traps: web filter logs are a different log type (cat=utm:webfilter), the blocked URL host is in
+//          FTNTFGThostname, the category in FTNTFGTcatdesc and the full request in requestContext.
+//          `catdesc` contains spaces, so match it lazily up to the next key (the "(.+?) \w+=" pattern).
+//          A deep inspection (SSL) policy hides the URL on encrypted traffic, then only the SNI host shows.
+//
+// --- Query 1: blocked traffic per policy / profile / host / category
+let FirewallPrefix = "fw-";
+let SrcRange = "203.0.113.0/24";
+let Lookback = 7d;
+Syslog
+| where TimeGenerated > ago(Lookback)
+| where Computer startswith FirewallPrefix
+| where SyslogMessage has "blocked"
+| extend src = extract(@"\bsrc=(\S+)", 1, SyslogMessage),
+         policy = extract(@"FTNTFGTpolicyid=(\d+)", 1, SyslogMessage),
+         host = extract(@"\bdhost=(\S+)", 1, SyslogMessage),
+         category = extract(@"FTNTFGTcatdesc=(.+?) \w+=", 1, SyslogMessage),
+         profile = extract(@"FTNTFGTprofile=(\S+)", 1, SyslogMessage)
+| where ipv4_is_in_range(src, SrcRange)
+| summarize n = count(), lastSeen = max(TimeGenerated) by policy, profile, host, category
+| order by n desc
+| take 70
+//
+// --- Query 2: web filter blocks (run separately)
+// Syslog
+// | where TimeGenerated > ago(7d)
+// | where SyslogMessage has "utm:webfilter" and SyslogMessage has "FTNTFGTaction=blocked"
+// | extend src = extract(@"\bsrc=(\S+)", 1, SyslogMessage),
+//          policy = extract(@"FTNTFGTpolicyid=(\d+)", 1, SyslogMessage),
+//          host = extract(@"FTNTFGThostname=(\S+)", 1, SyslogMessage),
+//          context = extract(@"requestContext=(.*)$", 1, SyslogMessage)
+// | where ipv4_is_in_range(src, "203.0.113.0/24")
+// | summarize n = count() by policy, host, context
+// | order by n desc
+// | take 80

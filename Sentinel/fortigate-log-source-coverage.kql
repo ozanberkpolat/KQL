@@ -1,0 +1,16 @@
+// Title: Which firewall / syslog sources are sending, and for how many days
+// Purpose: Verify log coverage for an audit period: record count, number of distinct days with data, first and last record per source.
+// Source table(s): Syslog, CommonSecurityLog
+// Parameters to edit: SourceHints (computer name fragments), SourceIps (HostIP list), From, To.
+// Notes/traps: Days vs the number of days in the period shows gaps (a source with data on 20 of 30 days
+//          lost logging for 10 days). Firewalls can arrive in either table depending on the connector
+//          (Syslog or CEF via CommonSecurityLog), so both are in the union. HostIP is the sender address.
+let From = datetime(2026-01-01);
+let To = datetime(2026-02-01);
+let SourceHints = dynamic(["fw-a", "fw-b", "syslog-collector"]);
+let SourceIps = dynamic(["192.0.2.4", "192.0.2.6"]);
+union Syslog, CommonSecurityLog
+| where TimeGenerated >= From and TimeGenerated < To
+| where Computer has_any (SourceHints) or HostIP in (SourceIps)
+| summarize Records = count(), Days = dcount(startofday(TimeGenerated)), FirstRecord = min(TimeGenerated), LastRecord = max(TimeGenerated) by Computer
+| order by Computer asc

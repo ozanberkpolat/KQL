@@ -1,0 +1,22 @@
+// Title: VNet peerings with state and gateway/forwarding flags
+// Purpose: Verify hub-and-spoke peerings: state, forwarded traffic, gateway transit, remote gateways.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/virtualnetworks)
+// Parameters to edit: RemoteVnetContains, a name fragment of the remote VNet (e.g. the hub). Empty = all.
+// Notes/traps: a peering must exist and be Connected on BOTH sides. A VNet that uses remote gateways
+//          needs allowGatewayTransit on the hub side. The remote VNet is only a resource id,
+//          the 9th segment ([8]) is its name.
+let RemoteVnetContains = '';   // e.g. 'vnet-hub'
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| mv-expand peering = properties.virtualNetworkPeerings limit 400
+| where isnotnull(peering)
+| extend remoteId = tostring(peering.properties.remoteVirtualNetwork.id)
+| where RemoteVnetContains == '' or remoteId has RemoteVnetContains
+| project vnet = name, subscriptionId, peering = tostring(peering.name),
+    remoteVnet = tostring(split(remoteId, '/')[8]),
+    peeringState = tostring(peering.properties.peeringState),
+    allowVirtualNetworkAccess = tostring(peering.properties.allowVirtualNetworkAccess),
+    allowForwardedTraffic = tostring(peering.properties.allowForwardedTraffic),
+    allowGatewayTransit = tostring(peering.properties.allowGatewayTransit),
+    useRemoteGateways = tostring(peering.properties.useRemoteGateways)
+| order by vnet asc, remoteVnet asc

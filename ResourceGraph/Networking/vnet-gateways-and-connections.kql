@@ -1,0 +1,21 @@
+// Title: VPN / ExpressRoute gateways and their connections
+// Purpose: Inventory virtual network gateways (type, SKU) and the connections attached to them with status.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/virtualnetworkgateways, microsoft.network/connections)
+// Parameters to edit: none. Run the two queries one at a time.
+// Notes/traps: connectionStatus is a snapshot at the last ARM refresh, use gateway metrics / logs for live tunnel state.
+//
+// --- Query 1: gateways
+resources
+| where type =~ 'microsoft.network/virtualnetworkgateways'
+| project name, resourceGroup, subscriptionId, location,
+    gatewayType = tostring(properties.gatewayType), sku = tostring(properties.sku.name)
+//
+// --- Query 2: connections (run separately)
+// resources
+// | where type =~ 'microsoft.network/connections'
+// | project name, resourceGroup, subscriptionId,
+//     connectionType = tostring(properties.connectionType),
+//     connectionStatus = tostring(properties.connectionStatus),
+//     gateway = tostring(properties.virtualNetworkGateway1.id),
+//     peer = tostring(properties.peer.id),
+//     localNetworkGateway = tostring(properties.localNetworkGateway2.id)

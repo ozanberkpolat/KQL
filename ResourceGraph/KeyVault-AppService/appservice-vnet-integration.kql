@@ -1,0 +1,15 @@
+// Title: Web apps by integration subnet (which apps use which VNet subnet)
+// Purpose: Plan subnet sizing and find apps sharing an integration subnet.
+// Source table(s): Azure Resource Graph, resources (microsoft.web/sites)
+// Parameters to edit: none.
+// Notes/traps: an integration subnet must be delegated to Microsoft.Web/serverFarms and sized for the plan's
+//          instance count; apps on the same plan share the subnet.
+resources
+| where type =~ 'microsoft.web/sites'
+| extend integrationSubnet = tostring(properties.virtualNetworkSubnetId)
+| where isnotempty(integrationSubnet)
+| project name, resourceGroup, subscriptionId,
+    plan = tostring(split(tostring(properties.serverFarmId), '/')[-1]),
+    subnet = tostring(split(integrationSubnet, '/subnets/')[-1]),
+    vnet = tostring(split(tostring(split(integrationSubnet, '/subnets/')[0]), '/')[-1])
+| order by vnet asc, subnet asc, name asc

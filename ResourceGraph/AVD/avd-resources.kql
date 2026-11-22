@@ -1,0 +1,10 @@
+// Title: Azure Virtual Desktop host pools, application groups and workspaces
+// Purpose: Inventory of the AVD control-plane objects.
+// Source table(s): Azure Resource Graph, resources (microsoft.desktopvirtualization/*)
+// Parameters to edit: none.
+// Notes/traps: session hosts themselves are ordinary VMs, find them via the host pool registration or a naming
+//          convention. AVD resources use type names in lower case, match with =~.
+resources
+| where type in~ ('microsoft.desktopvirtualization/hostpools', 'microsoft.desktopvirtualization/applicationgroups', 'microsoft.desktopvirtualization/workspaces')
+| project name, type, resourceGroup, location, subscriptionId
+| order by type asc, name asc

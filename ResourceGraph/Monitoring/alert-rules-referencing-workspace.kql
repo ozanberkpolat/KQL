@@ -1,0 +1,19 @@
+// Title: Alert rules, data collection rules and smart detectors that reference a Log Analytics workspace
+// Purpose: Impact analysis before moving or deleting a workspace: what depends on it.
+// Source table(s): Azure Resource Graph, resources
+// Parameters to edit: WorkspaceName (workspace resource name or full resource id fragment).
+// Notes/traps: matches on the serialized properties text, so it also finds rules that only mention the
+//          workspace in the query body. Run query 2 for DCR destinations (structured match).
+let WorkspaceName = 'log-contoso-central';
+resources
+| where type in~ ('microsoft.insights/scheduledqueryrules', 'microsoft.insights/activitylogalerts', 'microsoft.alertsmanagement/smartdetectoralertrules')
+| where tostring(properties) has WorkspaceName
+| project name, type, resourceGroup, subscriptionId
+//
+// --- Query 2 (run separately): data collection rules whose destination is the workspace
+// let WorkspaceName = 'log-contoso-central';
+// resources
+// | where type =~ 'microsoft.insights/datacollectionrules'
+// | mv-expand d = properties.destinations.logAnalytics limit 400
+// | where tostring(d.workspaceResourceId) has WorkspaceName
+// | project name, resourceGroup, subscriptionId

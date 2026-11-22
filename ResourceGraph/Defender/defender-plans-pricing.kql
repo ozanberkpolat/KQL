@@ -1,0 +1,15 @@
+// Title: Defender for Cloud plans per subscription (tier, sub-plan, extensions)
+// Purpose: Which Defender plans are Standard vs Free, and which plan extensions (e.g. agentless scanning) are on.
+// Source table(s): Azure Resource Graph, securityresources (microsoft.security/pricings)
+// Parameters to edit: PlanNames (empty = all plans).
+// Notes/traps: pricingTier Free means the plan is off. subPlan P1 / P2 differ in features (Defender for
+//          Servers). Extensions are a list of name=isEnabled pairs.
+let PlanNames = dynamic(['VirtualMachines', 'CloudPosture']);
+securityresources
+| where type == 'microsoft.security/pricings'
+| where array_length(PlanNames) == 0 or name in (PlanNames)
+| mv-expand e = properties.extensions limit 400
+| summarize extensions = make_list(strcat(tostring(e.name), '=', tostring(e.isEnabled)))
+    by subscriptionId, plan = name, tier = tostring(properties.pricingTier),
+       subPlan = tostring(properties.subPlan), since = tostring(properties.enablementTime)
+| order by subscriptionId asc, plan asc

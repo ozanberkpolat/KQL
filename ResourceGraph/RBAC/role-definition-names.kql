@@ -1,0 +1,15 @@
+// Title: Resolve role definition GUIDs to role names
+// Purpose: Turn the GUIDs from role-assignments.kql into readable names.
+// Source table(s): Azure Resource Graph, authorizationresources (microsoft.authorization/roledefinitions)
+// Parameters to edit: RoleIds. The three GUIDs below are Microsoft built-in roles.
+// Notes/traps: built-in role ids are the same in every tenant. Custom roles have tenant-specific GUIDs
+//          but appear in the same table.
+let RoleIds = dynamic([
+    'acdd72a7-3385-48ef-bd42-f606fba81ae7',   // Reader (built-in)
+    'b24988ac-6180-42a0-ab88-20f7382dd24c',   // Contributor (built-in)
+    '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'    // Owner (built-in)
+]);
+authorizationresources
+| where type =~ 'microsoft.authorization/roledefinitions'
+| where name in (RoleIds)
+| project roleId = name, roleName = tostring(properties.roleName)

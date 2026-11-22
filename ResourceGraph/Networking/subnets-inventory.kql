@@ -1,0 +1,25 @@
+// Title: All VNet subnets with NSG, route table, delegation, private endpoint and NIC counts
+// Purpose: One row per subnet. Shows what protects it (NSG), how it routes (UDR) and what lives in it.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/virtualnetworks)
+// Parameters to edit: OnlyWithoutNsg = true lists only subnets with no NSG attached.
+// Notes/traps: a subnet has either addressPrefix (single) or addressPrefixes (several); both are
+//          projected. Delegated subnets (e.g. SQL MI, App Service) manage their own NSG/UDR rules
+//          and are expected to differ. GatewaySubnet and AzureFirewallSubnet normally have no NSG.
+//          mv-expand on subnets returns at most 128 subnets per VNet unless you add "limit 400".
+let OnlyWithoutNsg = false;
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| extend vnetName = name, vnetRg = resourceGroup, vnetLoc = location
+| mv-expand subnet = properties.subnets limit 400
+| extend nsgId = tostring(subnet.properties.networkSecurityGroup.id)
+| where not(OnlyWithoutNsg) or isempty(nsgId)
+| project subscriptionId, vnetRg, vnetName, vnetLoc,
+    subnetName = tostring(subnet.name),
+    prefix = tostring(subnet.properties.addressPrefix),
+    prefixes = tostring(subnet.properties.addressPrefixes),
+    nsg = tostring(split(nsgId, '/')[-1]),
+    routeTable = tostring(split(tostring(subnet.properties.routeTable.id), '/')[-1]),
+    delegation = tostring(subnet.properties.delegations[0].properties.serviceName),
+    privateEndpoints = array_length(todynamic(subnet.properties.privateEndpoints)),
+    ipConfigurations = array_length(todynamic(subnet.properties.ipConfigurations))
+| order by vnetName asc, subnetName asc

@@ -1,0 +1,13 @@
+// Title: Server and Linux device onboarding and sensor health in Defender for Endpoint
+// Purpose: Which servers are onboarded, sensor health, last seen, and the Azure resource id for matching to Azure VMs.
+// Source table(s): DeviceInfo (Advanced Hunting)
+// Parameters to edit: Lookback.
+// Notes/traps: DeviceInfo has several rows per device, arg_max by DeviceId keeps the latest. A VM in Azure
+//          that is absent here is not onboarded: compare with ResourceGraph/Defender/mde-coverage-per-vm.kql.
+let Lookback = 30d;
+DeviceInfo
+| where Timestamp > ago(Lookback)
+| where DeviceType == "Server" or OSPlatform has "Server" or OSPlatform has "Linux"
+| summarize arg_max(Timestamp, *) by DeviceId
+| project DeviceName, OnboardingStatus, SensorHealthState, OSPlatform, AzureResourceId, LastSeen = Timestamp
+| order by OnboardingStatus asc, DeviceName asc

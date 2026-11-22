@@ -1,0 +1,24 @@
+// Title: Backup data transferred per item (full vs incremental) and job status
+// Purpose: Check that backups actually move data: a "Completed" job with 0 MB for weeks is suspicious
+//          (for example a SQL workload that is registered but not backing up databases).
+// Source table(s): AddonAzureBackupJobs, CoreAzureBackup
+// Parameters to edit: ItemContains, Lookback, ManagementType ('AzureWorkload', 'IaaSVM' or empty).
+// Notes/traps: JobOperationSubType separates Full / Differential / Log / Incremental jobs for workload
+//          (SQL, SAP HANA) backups. Names are only in CoreAzureBackup (BackupItemFriendlyName),
+//          AddonAzureBackupJobs has the unique id: join them on BackupItemUniqueId when you need a name.
+let ItemContains = "vm-db";
+let Lookback = 21d;
+let ManagementType = "AzureWorkload";
+let Names = CoreAzureBackup
+| where TimeGenerated > ago(Lookback)
+| where OperationName == "BackupItem"
+| summarize arg_max(TimeGenerated, BackupItemFriendlyName) by BackupItemUniqueId;
+AddonAzureBackupJobs
+| where TimeGenerated > ago(Lookback)
+| where JobOperation == "Backup"
+| where ManagementType == "" or BackupManagementType == ManagementType
+| join kind=inner Names on BackupItemUniqueId
+| where BackupItemFriendlyName has ItemContains
+| summarize maxMB = round(max(DataTransferredInMB), 0), avgMB = round(avg(DataTransferredInMB), 0), runs = count()
+    by BackupItemFriendlyName, JobOperationSubType, JobStatus
+| order by maxMB desc

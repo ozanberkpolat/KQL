@@ -1,0 +1,29 @@
+// Title: FortiGate sessions per policy with allowed / denied split (optionally between two ranges)
+// Purpose: Which firewall policy carries traffic between two networks, how many sessions were accepted and denied.
+//          Evidence for a rule review or for cleaning unused policies.
+// Source table(s): Syslog
+// Parameters to edit: FirewallPrefix, SrcRange, DstRange (CIDR), Lookback, ExcludeLogId.
+// Notes/traps: the `parse` operator pattern below breaks when a field is missing from a log line, the whole row
+//          then yields empty columns. Fields differ between traffic and UTM logs. FortiGate logs session
+//          end states: action=close / accept / timeout count as allowed, deny / blocked as denied, so
+//          "Action != deny" (used below) also counts "blocked" and "dns" actions as allowed, tighten
+//          it if you care. A log id such as 0000000020 is a session start/ARP-type record without
+//          useful fields, set ExcludeLogId to drop it (FTNTFGTlogid).
+let FirewallPrefix = "fw-";
+let SrcRange = "203.0.113.0/24";
+let DstRange = "198.51.100.0/24";
+let Lookback = 30d;
+let ExcludeLogId = "0000000020";
+Syslog
+| where TimeGenerated > ago(Lookback)
+| where Computer startswith FirewallPrefix
+| where SyslogMessage has "cat=traffic:forward"
+| extend logid = extract(@"FTNTFGTlogid=(\d+)", 1, SyslogMessage)
+| where logid != ExcludeLogId
+| parse SyslogMessage with * " src=" Src " " * " dst=" Dst " " * "FTNTFGTaction=" Action " " * "FTNTFGTpolicyid=" PolicyId " " *
+| where ipv4_is_in_range(Src, SrcRange) and ipv4_is_in_range(Dst, DstRange)
+| summarize Sessions = count(), Allowed = countif(Action != "deny"), Denied = countif(Action == "deny"),
+            FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)
+    by Computer, Src, Dst, Action, PolicyId
+| order by Sessions desc
+| take 50

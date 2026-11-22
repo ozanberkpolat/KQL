@@ -1,0 +1,13 @@
+// Title: DevTest Labs / VM auto-shutdown schedules
+// Purpose: Which VMs have an auto-shutdown schedule, at what time, in which time zone, enabled or not.
+// Source table(s): Azure Resource Graph, resources (microsoft.devtestlab/schedules)
+// Parameters to edit: none.
+// Notes/traps: the VM auto-shutdown setting in the portal is stored as a microsoft.devtestlab/schedules
+//          resource named shutdown-computevm-<vmname>. The time is HHmm in the schedule's own time zone.
+resources
+| where type =~ 'microsoft.devtestlab/schedules'
+| project name, resourceGroup, subscriptionId,
+    status = tostring(properties.status),
+    dailyTime = tostring(properties.dailyRecurrence.time),
+    timeZone = tostring(properties.timeZoneId),
+    target = tostring(properties.targetResourceId)

@@ -1,0 +1,17 @@
+// Title: VNets with subscription name, address space, subnet and peering counts
+// Purpose: One-page network overview with readable subscription names instead of GUIDs.
+// Source table(s): Azure Resource Graph, resources + resourcecontainers (join)
+// Parameters to edit: none.
+// Notes/traps: Resource Graph allows a limited number of joins per query (3). The join key
+//          subscriptionId must stay in the project of both sides.
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| join kind=leftouter (
+    resourcecontainers
+    | where type =~ 'microsoft.resources/subscriptions'
+    | project subscriptionId, subscription = name) on subscriptionId
+| project subscription, resourceGroup, vnet = name, region = location,
+    addressSpace = strcat_array(properties.addressSpace.addressPrefixes, ' '),
+    subnets = array_length(properties.subnets),
+    peerings = array_length(properties.virtualNetworkPeerings)
+| order by subscription asc, vnet asc

@@ -1,0 +1,27 @@
+// Title: VM inventory with size, OS, image, zone and protection tags
+// Purpose: One row per VM across all visible subscriptions: size, OS type, image reference,
+//          zones, power state and the tags that drive backup / replication / patching.
+// Source table(s): Azure Resource Graph, resources (microsoft.compute/virtualmachines)
+// Parameters to edit: the tag names in the project list (BackupEnabled, BackupPolicy,
+//          ReplicationEnabled, MaintenanceConfiguration) are examples, use your own tag keys.
+// Notes/traps: powerState and osName come from properties.extended.instanceView, which is a
+//          preview "extended properties" field and can be empty for deallocated or very new VMs.
+//          imageReference is empty for VMs created from a custom/specialized disk or a gallery
+//          image by id, so image columns can legitimately be blank.
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| extend img = properties.storageProfile.imageReference
+| project name, subscriptionId, resourceGroup, location,
+    zones = tostring(zones),
+    vmSize = tostring(properties.hardwareProfile.vmSize),
+    osType = tostring(properties.storageProfile.osDisk.osType),
+    imagePublisher = tostring(img.publisher),
+    imageOffer = tostring(img.offer),
+    imageSku = tostring(img.sku),
+    imageVersion = tostring(img.exactVersion),
+    powerState = tostring(properties.extended.instanceView.powerState.code),
+    backupEnabled = tostring(tags['BackupEnabled']),
+    backupPolicy = tostring(tags['BackupPolicy']),
+    replicationEnabled = tostring(tags['ReplicationEnabled']),
+    maintenanceConfiguration = tostring(tags['MaintenanceConfiguration'])
+| order by name asc

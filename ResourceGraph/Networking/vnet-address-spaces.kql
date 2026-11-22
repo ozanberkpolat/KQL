@@ -1,0 +1,14 @@
+// Title: Virtual networks with address space, DNS servers and peering count
+// Purpose: Address plan overview, find overlapping ranges, see which VNets use custom DNS.
+// Source table(s): Azure Resource Graph, resources (microsoft.network/virtualnetworks)
+// Parameters to edit: Prefixes, to find the VNets that contain a given range (optional).
+// Notes/traps: addressPrefixes is an array; mv-expand it (default row limit 128 per record) to filter on a range.
+let Prefixes = dynamic([]);   // e.g. dynamic(['198.51.100.', '203.0.113.']) = prefix strings to search; empty = all
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| extend addressSpace = tostring(properties.addressSpace.addressPrefixes)
+| where array_length(Prefixes) == 0 or addressSpace has_any (Prefixes)
+| project name, resourceGroup, subscriptionId, location, addressSpace,
+    dnsServers = tostring(properties.dhcpOptions.dnsServers),
+    peerings = array_length(todynamic(properties.virtualNetworkPeerings))
+| order by name asc

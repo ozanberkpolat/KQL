@@ -1,0 +1,20 @@
+// Title: Certificates that come from Key Vault: Application Gateway SSL certs and App Service certificates
+// Purpose: Find which gateways and web apps depend on a Key Vault secret for TLS, and which identity they use to read it.
+// Source table(s): Azure Resource Graph, resources (applicationgateways, web/certificates)
+// Parameters to edit: none. Run the two queries one at a time.
+// Notes/traps: an App Gateway that reads a certificate from Key Vault needs a user-assigned identity
+//          with get-secret rights; if the vault turns on RBAC or a firewall without allowing it, certificate
+//          renewals silently stop. A certificate in keyVaultSecretId without a version auto-rotates.
+//
+// --- Query 1: Application Gateway SSL certificates
+resources
+| where type =~ 'microsoft.network/applicationgateways'
+| mv-expand cert = properties.sslCertificates limit 400
+| project gateway = name, resourceGroup, certificate = tostring(cert.name),
+    keyVaultSecretId = tostring(cert.properties.keyVaultSecretId),
+    identities = tostring(identity.userAssignedIdentities)
+//
+// --- Query 2: App Service certificates (run separately)
+// resources
+// | where type =~ 'microsoft.web/certificates'
+// | project name, resourceGroup, keyVaultId = tostring(properties.keyVaultId), secretName = tostring(properties.keyVaultSecretName)
